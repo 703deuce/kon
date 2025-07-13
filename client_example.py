@@ -65,7 +65,7 @@ class FluxKontextClient:
         """Get information about loaded models"""
         return self.call_endpoint("get_model_info")
     
-    def fill_image(self, image_path: str, mask_path: str, prompt: str, 
+    def fill_image(self, image_path: str, prompt: str, mask_path: Optional[str] = None,
                   num_inference_steps: int = 30, guidance_scale: float = 30.0,
                   strength: float = 0.8, seed: Optional[int] = None,
                   width: int = 1024, height: int = 1024) -> Dict[str, Any]:
@@ -74,8 +74,9 @@ class FluxKontextClient:
         
         Args:
             image_path: Path to input image
-            mask_path: Path to mask image (white = edit, black = keep)
             prompt: Text description of desired changes
+            mask_path: Optional path to mask image (white = edit, black = keep). 
+                      If not provided, model will intelligently edit based on prompt
             num_inference_steps: Number of denoising steps
             guidance_scale: Prompt adherence strength
             strength: Inpainting strength
@@ -84,11 +85,9 @@ class FluxKontextClient:
             height: Output height
         """
         image_b64 = self.image_to_base64(image_path)
-        mask_b64 = self.image_to_base64(mask_path)
         
         params = {
             "image": image_b64,
-            "mask": mask_b64,
             "prompt": prompt,
             "num_inference_steps": num_inference_steps,
             "guidance_scale": guidance_scale,
@@ -96,6 +95,11 @@ class FluxKontextClient:
             "width": width,
             "height": height
         }
+        
+        # Add mask if provided
+        if mask_path:
+            mask_b64 = self.image_to_base64(mask_path)
+            params["mask"] = mask_b64
         
         if seed is not None:
             params["seed"] = seed
@@ -271,17 +275,28 @@ def main():
         info = client.get_model_info()
         print(f"Model info: {json.dumps(info, indent=2)}")
         
-        # Example 1: Fill image (requires input image and mask)
+        # Example 1a: Fill image with mask (targeted editing)
         if os.path.exists("input.jpg") and os.path.exists("mask.jpg"):
-            print("\nExample 1: Fill image")
+            print("\nExample 1a: Fill image with mask")
             result = client.fill_image(
                 image_path="input.jpg",
-                mask_path="mask.jpg",
                 prompt="a beautiful sunset over mountains",
+                mask_path="mask.jpg",
                 num_inference_steps=30,
                 seed=42
             )
-            client.save_result(result, "output_fill.png")
+            client.save_result(result, "output_fill_masked.png")
+        
+        # Example 1b: Fill image without mask (instruction-based editing like Replicate)
+        if os.path.exists("input.jpg"):
+            print("\nExample 1b: Fill image without mask (instruction-based)")
+            result = client.fill_image(
+                image_path="input.jpg",
+                prompt="change the sky to a beautiful sunset over mountains",
+                num_inference_steps=30,
+                seed=42
+            )
+            client.save_result(result, "output_fill_instruction.png")
         
         # Example 2: Depth controlled generation
         if os.path.exists("input.jpg"):

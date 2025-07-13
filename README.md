@@ -73,10 +73,10 @@ Fill or edit parts of an image using a mask.
 
 **Required Parameters**:
 - `image`: Base64 encoded input image
-- `mask`: Base64 encoded mask image (white = edit, black = keep)
 - `prompt`: Text description of desired changes
 
 **Optional Parameters**:
+- `mask`: Base64 encoded mask image (white = edit, black = keep). If not provided, the model will intelligently edit the entire image based on the prompt (like Replicate)
 - `num_inference_steps`: Number of denoising steps (default: 30)
 - `guidance_scale`: Prompt adherence strength (default: 30.0)
 - `strength`: Inpainting strength (default: 0.8)
@@ -84,7 +84,7 @@ Fill or edit parts of an image using a mask.
 - `width`: Output width (default: 1024)
 - `height`: Output height (default: 1024)
 
-**Example**:
+**Example with mask** (targeted editing):
 ```python
 payload = {
     "input": {
@@ -92,6 +92,20 @@ payload = {
         "image": "base64_encoded_image",
         "mask": "base64_encoded_mask", 
         "prompt": "a beautiful sunset over mountains",
+        "num_inference_steps": 30,
+        "guidance_scale": 30.0,
+        "seed": 42
+    }
+}
+```
+
+**Example without mask** (instruction-based editing like Replicate):
+```python
+payload = {
+    "input": {
+        "endpoint": "fill_image",
+        "image": "base64_encoded_image",
+        "prompt": "change the sky to a beautiful sunset over mountains",
         "num_inference_steps": 30,
         "guidance_scale": 30.0,
         "seed": 42

@@ -118,9 +118,9 @@ NETWORK_CONFIG = {
 ENDPOINTS = {
     "fill_image": {
         "description": "Fill/inpaint image using FLUX.1 Fill",
-        "required_params": ["image", "mask", "prompt"],
+        "required_params": ["image", "prompt"],
         "optional_params": [
-            "num_inference_steps", "guidance_scale", "strength", 
+            "mask", "num_inference_steps", "guidance_scale", "strength", 
             "seed", "width", "height"
         ]
     },
@@ -175,7 +175,6 @@ ERROR_MESSAGES = {
     "invalid_endpoint": "Invalid endpoint specified",
     "missing_image": "Image parameter is required",
     "invalid_image": "Invalid image format or corrupted image",
-    "missing_mask": "Mask parameter is required for fill_image endpoint",
     "invalid_mask": "Invalid mask format",
     "missing_prompt": "Prompt parameter is required",
     "invalid_parameters": "Invalid parameters provided",

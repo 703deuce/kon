@@ -131,12 +131,21 @@ class FluxKontextHandler:
             height = params.get("height", 1024)
             
             # Validate required parameters
-            if not image_b64 or not mask_data:
-                raise ValueError("Both image and mask are required")
+            if not image_b64:
+                raise ValueError("Image is required")
+            
+            if not prompt:
+                raise ValueError("Prompt is required")
             
             # Prepare inputs
             image = self._base64_to_image(image_b64)
-            mask = self._prepare_mask(image, mask_data)
+            
+            # Handle mask - if no mask provided, create a full white mask for instruction-based editing
+            if mask_data:
+                mask = self._prepare_mask(image, mask_data)
+            else:
+                # Create a full white mask for instruction-based editing (like Replicate)
+                mask = Image.new("L", image.size, 255)  # Full white mask
             
             # Resize if needed
             if width != image.width or height != image.height:
