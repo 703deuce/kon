@@ -5,7 +5,7 @@ import io
 import json
 import logging
 from PIL import Image
-from diffusers import FluxFillPipeline, FluxControlNetPipeline
+from diffusers import FluxFillPipeline, FluxControlNetPipeline, FluxPipeline
 from diffusers.models import FluxControlNetModel
 from transformers import pipeline
 import numpy as np
@@ -24,6 +24,7 @@ class FluxKontextHandler:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
         self.fill_pipeline = None
+        self.kontext_pipeline = None
         self.controlnet_pipeline = None
         self.depth_estimator = None
         self.canny_detector = None
@@ -36,9 +37,15 @@ class FluxKontextHandler:
         try:
             logger.info("Initializing FLUX.1 Kontext models...")
             
-            # Initialize Fill Pipeline
+            # Initialize Fill Pipeline for mask-based inpainting
             self.fill_pipeline = FluxFillPipeline.from_pretrained(
                 "black-forest-labs/FLUX.1-Fill-dev",
+                torch_dtype=self.dtype
+            ).to(self.device)
+            
+            # Initialize Kontext Pipeline for instruction-based editing
+            self.kontext_pipeline = FluxPipeline.from_pretrained(
+                "black-forest-labs/FLUX.1-Kontext-dev",
                 torch_dtype=self.dtype
             ).to(self.device)
             
@@ -188,6 +195,71 @@ class FluxKontextHandler:
             
         except Exception as e:
             logger.error(f"Error in fill_image: {str(e)}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+    
+    def instruction_edit(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """True FLUX.1 Kontext instruction-based editing without masks"""
+        try:
+            # Extract parameters
+            image_b64 = params.get("image")
+            instruction = params.get("instruction") or params.get("prompt", "")
+            num_inference_steps = params.get("num_inference_steps", 30)
+            guidance_scale = params.get("guidance_scale", 3.5)
+            seed = params.get("seed")
+            width = params.get("width", 1024)
+            height = params.get("height", 1024)
+            
+            # Validate required parameters
+            if not image_b64:
+                raise ValueError("Image is required")
+            
+            if not instruction:
+                raise ValueError("Instruction is required")
+            
+            # Prepare inputs
+            image = self._base64_to_image(image_b64)
+            
+            # Resize if needed
+            if width != image.width or height != image.height:
+                image = image.resize((width, height))
+            
+            # Set random seed if provided
+            if seed is not None:
+                torch.manual_seed(seed)
+            
+            # Generate using instruction-based editing
+            result = self.kontext_pipeline(
+                prompt=instruction,
+                image=image,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                height=height,
+                width=width
+            )
+            
+            # Convert result to base64
+            output_image = result.images[0]
+            output_b64 = self._image_to_base64(output_image)
+            
+            return {
+                "status": "success",
+                "image": output_b64,
+                "parameters": {
+                    "instruction": instruction,
+                    "num_inference_steps": num_inference_steps,
+                    "guidance_scale": guidance_scale,
+                    "seed": seed,
+                    "width": width,
+                    "height": height
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in instruction_edit: {str(e)}")
             return {
                 "status": "error",
                 "error": str(e),
@@ -414,6 +486,7 @@ class FluxKontextHandler:
             "status": "success",
             "models": {
                 "fill_pipeline": "black-forest-labs/FLUX.1-Fill-dev",
+                "kontext_pipeline": "black-forest-labs/FLUX.1-Kontext-dev",
                 "controlnet_depth": "black-forest-labs/FLUX.1-Depth-dev",
                 "controlnet_canny": "black-forest-labs/FLUX.1-Canny-dev",
                 "depth_estimator": "Intel/dpt-hybrid-midas"
@@ -423,6 +496,7 @@ class FluxKontextHandler:
             "cuda_available": torch.cuda.is_available(),
             "endpoints": [
                 "fill_image",
+                "instruction_edit",
                 "depth_controlled_generation", 
                 "canny_controlled_generation",
                 "multi_controlnet_generation",
@@ -455,6 +529,8 @@ def runpod_handler(job):
         # Route to appropriate endpoint
         if endpoint == "fill_image":
             result = handler.fill_image(job_input)
+        elif endpoint == "instruction_edit":
+            result = handler.instruction_edit(job_input)
         elif endpoint == "depth_controlled_generation":
             result = handler.depth_controlled_generation(job_input)
         elif endpoint == "canny_controlled_generation":
@@ -469,6 +545,7 @@ def runpod_handler(job):
                 "error": f"Unknown endpoint: {endpoint}",
                 "available_endpoints": [
                     "fill_image",
+                    "instruction_edit",
                     "depth_controlled_generation",
                     "canny_controlled_generation", 
                     "multi_controlnet_generation",

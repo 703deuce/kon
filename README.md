@@ -4,7 +4,8 @@ A complete RunPod serverless deployment for FLUX.1 Kontext models, providing pow
 
 ## Features
 
-- **Fill/Inpainting**: Advanced image inpainting using FLUX.1 Fill
+- **Instruction-Based Editing**: True FLUX.1 Kontext - just tell it what to change, no masks needed!
+- **Fill/Inpainting**: Advanced image inpainting using FLUX.1 Fill with optional masks
 - **Depth Control**: Structure-preserving image generation with depth maps
 - **Canny Edge Control**: Edge-guided image generation
 - **Multi-ControlNet**: Combined depth + canny control for precise generation
@@ -65,7 +66,38 @@ print(response.json())
 
 ## API Endpoints
 
-### 1. Fill Image (Inpainting)
+### 1. Instruction Edit (True FLUX.1 Kontext)
+
+**Endpoint**: `instruction_edit`
+
+True FLUX.1 Kontext instruction-based editing - just tell it what to change, no mask needed!
+
+**Required Parameters**:
+- `image`: Base64 encoded input image
+- `instruction`: Natural language instruction describing what to change
+
+**Optional Parameters**:
+- `num_inference_steps`: Number of denoising steps (default: 30)
+- `guidance_scale`: Instruction adherence strength (default: 3.5)
+- `seed`: Random seed for reproducibility
+- `width`: Output width (default: 1024)
+- `height`: Output height (default: 1024)
+
+**Example**:
+```python
+payload = {
+    "input": {
+        "endpoint": "instruction_edit",
+        "image": "base64_encoded_image",
+        "instruction": "change the sky to sunset",
+        "num_inference_steps": 30,
+        "guidance_scale": 3.5,
+        "seed": 42
+    }
+}
+```
+
+### 2. Fill Image (Inpainting)
 
 **Endpoint**: `fill_image`
 
@@ -113,7 +145,7 @@ payload = {
 }
 ```
 
-### 2. Depth Controlled Generation
+### 3. Depth Controlled Generation
 
 **Endpoint**: `depth_controlled_generation`
 
@@ -144,7 +176,7 @@ payload = {
 }
 ```
 
-### 3. Canny Edge Controlled Generation
+### 4. Canny Edge Controlled Generation
 
 **Endpoint**: `canny_controlled_generation`
 
@@ -178,7 +210,7 @@ payload = {
 }
 ```
 
-### 4. Multi-ControlNet Generation
+### 5. Multi-ControlNet Generation
 
 **Endpoint**: `multi_controlnet_generation`
 
@@ -213,7 +245,7 @@ payload = {
 }
 ```
 
-### 5. Model Information
+### 6. Model Information
 
 **Endpoint**: `get_model_info`
 
@@ -229,6 +261,23 @@ payload = {
     }
 }
 ```
+
+## Quick Reference
+
+### Available Endpoints:
+
+- **`instruction_edit`**: True FLUX.1 Kontext - natural language editing without masks
+- **`fill_image`**: Traditional inpainting with optional masks
+- **`depth_controlled_generation`**: Structure-preserving generation
+- **`canny_controlled_generation`**: Edge-guided generation  
+- **`multi_controlnet_generation`**: Combined depth + edge control
+- **`get_model_info`**: Health check and model information
+
+### Which Endpoint to Use?
+
+- **Want to edit with natural language?** → Use `instruction_edit` ("change the sky to sunset")
+- **Want precise control with masks?** → Use `fill_image` with mask
+- **Want to transform while keeping structure?** → Use `depth_controlled_generation` or `canny_controlled_generation`
 
 ## Complete Usage Example
 

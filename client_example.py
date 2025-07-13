@@ -106,6 +106,37 @@ class FluxKontextClient:
         
         return self.call_endpoint("fill_image", **params)
     
+    def instruction_edit(self, image_path: str, instruction: str,
+                        num_inference_steps: int = 30, guidance_scale: float = 3.5,
+                        seed: Optional[int] = None, width: int = 1024, height: int = 1024) -> Dict[str, Any]:
+        """
+        True FLUX.1 Kontext instruction-based editing without masks
+        
+        Args:
+            image_path: Path to input image
+            instruction: Natural language instruction describing what to change
+            num_inference_steps: Number of denoising steps
+            guidance_scale: Instruction adherence strength
+            seed: Random seed for reproducibility
+            width: Output width
+            height: Output height
+        """
+        image_b64 = self.image_to_base64(image_path)
+        
+        params = {
+            "image": image_b64,
+            "instruction": instruction,
+            "num_inference_steps": num_inference_steps,
+            "guidance_scale": guidance_scale,
+            "width": width,
+            "height": height
+        }
+        
+        if seed is not None:
+            params["seed"] = seed
+        
+        return self.call_endpoint("instruction_edit", **params)
+    
     def depth_controlled_generation(self, image_path: str, prompt: str,
                                   num_inference_steps: int = 30, guidance_scale: float = 3.5,
                                   controlnet_conditioning_scale: float = 0.6,
@@ -298,38 +329,49 @@ def main():
             )
             client.save_result(result, "output_fill_instruction.png")
         
-        # Example 2: Depth controlled generation
+        # Example 2: True FLUX.1 Kontext instruction-based editing
         if os.path.exists("input.jpg"):
-            print("\nExample 2: Depth controlled generation")
+            print("\nExample 2: True FLUX.1 Kontext instruction-based editing")
+            result = client.instruction_edit(
+                image_path="input.jpg",
+                instruction="change the car color to red",
+                num_inference_steps=30,
+                seed=123
+            )
+            client.save_result(result, "output_kontext_instruction.png")
+        
+        # Example 3: Depth controlled generation
+        if os.path.exists("input.jpg"):
+            print("\nExample 3: Depth controlled generation")
             result = client.depth_controlled_generation(
                 image_path="input.jpg",
                 prompt="a futuristic cityscape at night",
                 controlnet_conditioning_scale=0.7,
-                seed=123
+                seed=456
             )
             client.save_result(result, "output_depth.png")
         
-        # Example 3: Canny controlled generation
+        # Example 4: Canny controlled generation
         if os.path.exists("input.jpg"):
-            print("\nExample 3: Canny controlled generation")
+            print("\nExample 4: Canny controlled generation")
             result = client.canny_controlled_generation(
                 image_path="input.jpg",
                 prompt="an artistic sketch of a landscape",
                 low_threshold=50,
                 high_threshold=150,
-                seed=456
+                seed=789
             )
             client.save_result(result, "output_canny.png")
         
-        # Example 4: Multi-ControlNet generation
+        # Example 5: Multi-ControlNet generation
         if os.path.exists("input.jpg"):
-            print("\nExample 4: Multi-ControlNet generation")
+            print("\nExample 5: Multi-ControlNet generation")
             result = client.multi_controlnet_generation(
                 image_path="input.jpg",
                 prompt="a photorealistic portrait",
                 depth_conditioning_scale=0.7,
                 canny_conditioning_scale=0.5,
-                seed=789
+                seed=101112
             )
             client.save_result(result, "output_multi.png")
         

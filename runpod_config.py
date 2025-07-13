@@ -117,11 +117,18 @@ NETWORK_CONFIG = {
 # Available Endpoints
 ENDPOINTS = {
     "fill_image": {
-        "description": "Fill/inpaint image using FLUX.1 Fill",
+        "description": "Fill/inpaint image using FLUX.1 Fill with optional mask",
         "required_params": ["image", "prompt"],
         "optional_params": [
             "mask", "num_inference_steps", "guidance_scale", "strength", 
             "seed", "width", "height"
+        ]
+    },
+    "instruction_edit": {
+        "description": "True FLUX.1 Kontext instruction-based editing without masks",
+        "required_params": ["image", "instruction"],
+        "optional_params": [
+            "num_inference_steps", "guidance_scale", "seed", "width", "height"
         ]
     },
     "depth_controlled_generation": {
