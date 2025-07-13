@@ -10,6 +10,9 @@ ENV DIFFUSERS_CACHE=/workspace/models
 ENV HUGGINGFACE_HUB_CACHE=/workspace/models
 ENV CUDA_VISIBLE_DEVICES=0
 
+# Hugging Face authentication (set this in RunPod environment)
+# ENV HUGGINGFACE_TOKEN=your_token_here
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \

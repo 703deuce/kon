@@ -33,16 +33,45 @@ A complete RunPod serverless deployment for FLUX.1 Kontext models, providing pow
      - **Memory**: 24GB+
      - **Disk**: 50GB+
 
-3. **Environment Variables** (Optional)
+3. **Environment Variables** (REQUIRED for FLUX.1 models)
    ```
+   HUGGINGFACE_TOKEN=your_huggingface_token_here
    TRANSFORMERS_CACHE=/workspace/models
    DIFFUSERS_CACHE=/workspace/models
    HUGGINGFACE_HUB_CACHE=/workspace/models
    ```
 
+   **⚠️ IMPORTANT**: You MUST set `HUGGINGFACE_TOKEN` to access FLUX.1 models:
+   - Go to [Hugging Face Settings](https://huggingface.co/settings/tokens)
+   - Create a new token with "Read" permissions
+   - Accept the license for [FLUX.1-Fill-dev](https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev) and [FLUX.1-Kontext-dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev)
+   - Add the token to your RunPod environment variables
+
 4. **Deploy**
    - Click "Deploy"
    - Wait for deployment (first run may take 15-20 minutes for model downloads)
+
+## 🔐 Hugging Face Authentication Setup
+
+**Before deploying**, you MUST set up Hugging Face authentication:
+
+### Step 1: Create Hugging Face Account
+- Sign up at [Hugging Face](https://huggingface.co)
+
+### Step 2: Accept Model Licenses
+- Visit [FLUX.1-Fill-dev](https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev) and accept license
+- Visit [FLUX.1-Kontext-dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) and accept license
+
+### Step 3: Create Access Token
+- Go to [HF Settings > Tokens](https://huggingface.co/settings/tokens)
+- Click "New Token"
+- Select "Read" permissions
+- Copy the generated token
+
+### Step 4: Add to RunPod Environment
+- In RunPod console, go to your endpoint settings
+- Add environment variable: `HUGGINGFACE_TOKEN` = `your_token_here`
+- Redeploy if already deployed
 
 ### 2. Test Your Endpoint
 
@@ -449,10 +478,18 @@ All endpoints return a JSON response with the following structure:
 
 ### Common Issues
 
-1. **Out of Memory**: Reduce image size or use smaller models
-2. **Timeout**: Increase timeout settings for complex generations
-3. **Model Loading**: Ensure sufficient disk space for model downloads
-4. **Base64 Errors**: Verify image encoding/decoding
+1. **Authentication Error (401)**: 
+   - Set `HUGGINGFACE_TOKEN` environment variable in RunPod
+   - Accept licenses for FLUX.1 models on Hugging Face
+   - Ensure token has "Read" permissions
+
+2. **Out of Memory**: Reduce image size or use smaller models
+
+3. **Timeout**: Increase timeout settings for complex generations
+
+4. **Model Loading**: Ensure sufficient disk space for model downloads
+
+5. **Base64 Errors**: Verify image encoding/decoding
 
 ### Debug Mode
 

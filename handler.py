@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional, List
 import traceback
 import gc
 import os
+from huggingface_hub import login
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -36,6 +37,15 @@ class FluxKontextHandler:
         """Initialize all required models"""
         try:
             logger.info("Initializing FLUX.1 Kontext models...")
+            
+            # Authenticate with Hugging Face if token is provided
+            hf_token = os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("HF_TOKEN")
+            if hf_token:
+                logger.info("Authenticating with Hugging Face...")
+                login(token=hf_token)
+                logger.info("✅ Hugging Face authentication successful")
+            else:
+                logger.warning("⚠️ No Hugging Face token found. Set HUGGINGFACE_TOKEN environment variable for gated models.")
             
             # Initialize Fill Pipeline for mask-based inpainting
             self.fill_pipeline = FluxFillPipeline.from_pretrained(
