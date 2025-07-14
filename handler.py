@@ -15,42 +15,15 @@ import traceback
 import gc
 import os
 from huggingface_hub import login
-import boto3
-from botocore.client import Config
+# boto3 removed - not using S3 storage
 import shutil
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configure S3 storage for model caching
-S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "https://s3api-eu-ro-1.runpod.io")
-S3_BUCKET = os.environ.get("S3_BUCKET", "ly11hhawq7")
-S3_ACCESS_KEY = os.environ.get("aws_access_key_id", "")
-S3_SECRET_KEY = os.environ.get("aws_secret_access_key", "")
-S3_REGION = os.environ.get("S3_REGION", "EU-RO-1")
-
 # Network volume cache directory (RunPod serverless network volume)
 MODEL_CACHE_DIR = "/runpod-volume/huggingface"
-
-# Create S3 client if credentials are available
-s3_client = None
-if S3_ACCESS_KEY and S3_SECRET_KEY:
-    try:
-        s3_client = boto3.client(
-            's3',
-            endpoint_url=S3_ENDPOINT,
-            aws_access_key_id=S3_ACCESS_KEY,
-            aws_secret_access_key=S3_SECRET_KEY,
-            config=Config(signature_version='s3v4'),
-            region_name=S3_REGION
-        )
-        logger.info("✅ S3 client initialized successfully")
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize S3 client: {e}")
-        s3_client = None
-else:
-    logger.warning("⚠️ S3 credentials not found, S3 storage disabled")
 
 # Set HuggingFace cache directory to use local storage
 os.environ["HF_HOME"] = MODEL_CACHE_DIR
@@ -60,81 +33,7 @@ os.environ["TRANSFORMERS_CACHE"] = MODEL_CACHE_DIR
 os.makedirs(MODEL_CACHE_DIR, exist_ok=True)
 logger.info(f"📁 Using local model cache: {MODEL_CACHE_DIR}")
 
-def sync_models_from_s3():
-    """Sync models from S3 to local cache directory"""
-    if not s3_client:
-        logger.info("⏭️ S3 not configured, skipping sync from S3")
-        return False
-        
-    try:
-        logger.info("🔄 Syncing models from S3 to local cache...")
-        
-        # List all objects in the models/ prefix
-        paginator = s3_client.get_paginator('list_objects_v2')
-        bucket_name = os.environ.get("S3_BUCKET", S3_BUCKET)
-        page_iterator = paginator.paginate(Bucket=bucket_name, Prefix='models/')
-        
-        downloaded_files = 0
-        for page in page_iterator:
-            if 'Contents' in page:
-                for obj in page['Contents']:
-                    s3_key = obj['Key']
-                    local_path = os.path.join("/runpod-volume", s3_key)
-                    
-                    # Create directory if it doesn't exist
-                    os.makedirs(os.path.dirname(local_path), exist_ok=True)
-                    
-                    # Download file if it doesn't exist locally or is newer
-                    if not os.path.exists(local_path):
-                        logger.info(f"📥 Downloading {s3_key}")
-                        s3_client.download_file(bucket_name, s3_key, local_path)
-                        downloaded_files += 1
-        
-        logger.info(f"✅ Synced {downloaded_files} files from S3")
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Error syncing from S3: {e}")
-        return False
-
-def sync_models_to_s3():
-    """Sync models from local cache to S3"""
-    if not s3_client:
-        logger.info("⏭️ S3 not configured, skipping sync to S3")
-        return False
-        
-    try:
-        logger.info("🔄 Syncing models from local cache to S3...")
-        
-        if not os.path.exists(MODEL_CACHE_DIR):
-            logger.info("📁 No local models to sync")
-            return True
-        
-        bucket_name = os.environ.get("S3_BUCKET", S3_BUCKET)
-        uploaded_files = 0
-        for root, dirs, files in os.walk(MODEL_CACHE_DIR):
-            for file in files:
-                local_path = os.path.join(root, file)
-                # Convert local path to S3 key
-                rel_path = os.path.relpath(local_path, "/runpod-volume")
-                s3_key = rel_path.replace("\\", "/")  # Ensure forward slashes
-                
-                try:
-                    # Check if file exists in S3
-                    s3_client.head_object(Bucket=bucket_name, Key=s3_key)
-                    logger.debug(f"⏭️ Skipping {s3_key} (already exists)")
-                except:
-                    # File doesn't exist in S3, upload it
-                    logger.info(f"📤 Uploading {s3_key}")
-                    s3_client.upload_file(local_path, bucket_name, s3_key)
-                    uploaded_files += 1
-        
-        logger.info(f"✅ Uploaded {uploaded_files} files to S3")
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Error syncing to S3: {e}")
-        return False
+# S3 sync functions removed - using network volume storage only
 
 def debug_storage_info():
     """Debug storage configuration and return info"""
@@ -144,12 +43,7 @@ def debug_storage_info():
         
         debug_info = {
             "status": "success",
-            "s3_config": {
-                "endpoint": os.environ.get("S3_ENDPOINT", S3_ENDPOINT),
-                "bucket": os.environ.get("S3_BUCKET", S3_BUCKET),
-                "region": os.environ.get("S3_REGION", S3_REGION)
-            },
-            "local_cache": {
+            "network_volume": {
                 "cache_dir": MODEL_CACHE_DIR,
                 "exists": os.path.exists(MODEL_CACHE_DIR),
                 "contents": []
@@ -162,25 +56,25 @@ def debug_storage_info():
             }
         }
         
-        # Check local cache contents
+        # Check network volume cache contents
         if os.path.exists(MODEL_CACHE_DIR):
             try:
                 for item in os.listdir(MODEL_CACHE_DIR):
                     item_path = os.path.join(MODEL_CACHE_DIR, item)
                     if os.path.isdir(item_path):
-                        debug_info["local_cache"]["contents"].append({
+                        debug_info["network_volume"]["contents"].append({
                             "name": item,
                             "type": "directory",
                             "size": get_dir_size(item_path)
                         })
                     else:
-                        debug_info["local_cache"]["contents"].append({
+                        debug_info["network_volume"]["contents"].append({
                             "name": item,
                             "type": "file",
                             "size": os.path.getsize(item_path)
                         })
             except Exception as e:
-                debug_info["local_cache"]["error"] = str(e)
+                debug_info["network_volume"]["error"] = str(e)
         
         # Check disk usage
         try:
@@ -189,26 +83,12 @@ def debug_storage_info():
         except Exception as e:
             debug_info["disk_usage"]["error"] = str(e)
         
-        # Test S3 connection
-        if s3_client:
-            try:
-                bucket_name = os.environ.get("S3_BUCKET", S3_BUCKET)
-                response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix='models/', MaxKeys=5)
-                debug_info["s3_test"] = {
-                    "status": "success",
-                    "objects_found": len(response.get('Contents', [])),
-                    "sample_objects": [obj['Key'] for obj in response.get('Contents', [])[:5]]
-                }
-            except Exception as e:
-                debug_info["s3_test"] = {
-                    "status": "error",
-                    "error": str(e)
-                }
-        else:
-            debug_info["s3_test"] = {
-                "status": "disabled",
-                "error": "S3 client not configured"
-            }
+        # Check network volume specifically
+        try:
+            result = subprocess.run(['df', '-h', '/runpod-volume'], capture_output=True, text=True)
+            debug_info["network_volume_usage"] = result.stdout
+        except Exception as e:
+            debug_info["network_volume_usage"] = f"Error: {str(e)}"
         
         return debug_info
         
@@ -231,93 +111,7 @@ def get_dir_size(path):
         pass
     return total_size
 
-def setup_models_in_s3():
-    """Setup S3 with FLUX models by downloading and uploading them"""
-    try:
-        logger.info("🚀 Starting S3 model setup process...")
-        
-        # Check disk space first
-        import shutil
-        disk_usage = shutil.disk_usage("/workspace")
-        free_gb = disk_usage.free / (1024 ** 3)
-        
-        logger.info(f"💾 Available disk space: {free_gb:.1f} GB")
-        
-        if free_gb < 15:
-            return {
-                "status": "error",
-                "error": f"Insufficient disk space: {free_gb:.1f} GB available, need at least 15GB",
-                "solution": "Use a larger RunPod template with more disk space"
-            }
-        
-        # Initialize a temporary handler to download models
-        logger.info("🔄 Initializing temporary handler for model download...")
-        temp_handler = FluxKontextHandler()
-        
-        # Authenticate with HuggingFace
-        temp_handler.authenticate_hf()
-        
-        models_downloaded = []
-        
-        # Download FLUX.1-Kontext model
-        logger.info("📥 Downloading FLUX.1-Kontext model...")
-        try:
-            temp_handler.load_kontext_pipeline()
-            models_downloaded.append("FLUX.1-Kontext-dev")
-            logger.info("✅ FLUX.1-Kontext model downloaded successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to download FLUX.1-Kontext: {e}")
-            return {
-                "status": "error",
-                "error": f"Failed to download FLUX.1-Kontext: {str(e)}"
-            }
-        
-        # Download FLUX.1-Fill model
-        logger.info("📥 Downloading FLUX.1-Fill model...")
-        try:
-            temp_handler.load_fill_pipeline()
-            models_downloaded.append("FLUX.1-Fill-dev")
-            logger.info("✅ FLUX.1-Fill model downloaded successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to download FLUX.1-Fill: {e}")
-            return {
-                "status": "error",
-                "error": f"Failed to download FLUX.1-Fill: {str(e)}"
-            }
-        
-        # Clean up GPU memory
-        del temp_handler
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        gc.collect()
-        
-        # Upload models to S3
-        logger.info("📤 Uploading models to S3...")
-        sync_success = sync_models_to_s3()
-        
-        if sync_success:
-            logger.info("🎉 S3 model setup completed successfully!")
-            return {
-                "status": "success",
-                "message": "Models successfully downloaded and uploaded to S3",
-                "models_setup": models_downloaded,
-                "s3_sync": "completed"
-            }
-        else:
-            logger.error("❌ Failed to sync models to S3")
-            return {
-                "status": "error",
-                "error": "Models downloaded but failed to upload to S3",
-                "models_downloaded": models_downloaded
-            }
-            
-    except Exception as e:
-        logger.error(f"💥 Error in S3 model setup: {e}")
-        return {
-            "status": "error",
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
+# S3 model setup function removed - using network volume storage only
 
 class FluxKontextHandler:
     def __init__(self):
@@ -380,9 +174,6 @@ class FluxKontextHandler:
                     
                 logger.info("FluxKontextPipeline loaded successfully")
                 
-                # Sync models to S3 after loading
-                sync_models_to_s3()
-                
             except Exception as e:
                 logger.error(f"Error loading FluxKontextPipeline: {e}")
                 raise
@@ -417,9 +208,6 @@ class FluxKontextHandler:
                     self.fill_pipeline.enable_xformers_memory_efficient_attention()
                     
                 logger.info("FluxFillPipeline loaded successfully")
-                
-                # Sync models to S3 after loading
-                sync_models_to_s3()
                 
             except Exception as e:
                 logger.error(f"Error loading FluxFillPipeline: {e}")
@@ -863,8 +651,7 @@ def initialize_handler():
     """Initialize the global handler"""
     global handler
     if handler is None:
-        # Sync models from S3 to local cache before initializing handler
-        sync_models_from_s3()
+        logger.info("🚀 Initializing FluxKontextHandler with network volume storage")
         handler = FluxKontextHandler()
     return handler
 
@@ -885,44 +672,14 @@ def runpod_handler(job):
             os.environ["HF_TOKEN"] = job_input["hf_token"]
             logger.info("HF_TOKEN set from job input")
         
-        # Set S3 credentials from job input BEFORE initializing handler
+        # S3 credentials are ignored - using network volume storage only
         if "s3_access_key" in job_input and "s3_secret_key" in job_input:
-            os.environ["S3_ACCESS_KEY"] = job_input["s3_access_key"]
-            os.environ["S3_SECRET_KEY"] = job_input["s3_secret_key"]
-            logger.info("S3 credentials set from job input")
-            
-            # Also set other S3 parameters if provided
-            if "s3_endpoint" in job_input:
-                os.environ["S3_ENDPOINT"] = job_input["s3_endpoint"]
-            if "s3_bucket" in job_input:
-                os.environ["S3_BUCKET"] = job_input["s3_bucket"]
-            if "s3_region" in job_input:
-                os.environ["S3_REGION"] = job_input["s3_region"]
-            
-            # Reinitialize S3 client with new credentials
-            global s3_client
-            try:
-                s3_client = boto3.client(
-                    's3',
-                    endpoint_url=os.environ.get("S3_ENDPOINT"),
-                    aws_access_key_id=os.environ.get("S3_ACCESS_KEY"),
-                    aws_secret_access_key=os.environ.get("S3_SECRET_KEY"),
-                    config=Config(signature_version='s3v4'),
-                    region_name=os.environ.get("S3_REGION")
-                )
-                logger.info("✅ S3 client reinitialized with job credentials")
-                logger.info(f"🔧 S3 Config: endpoint={os.environ.get('S3_ENDPOINT')}, bucket={os.environ.get('S3_BUCKET')}, region={os.environ.get('S3_REGION')}")
-            except Exception as e:
-                logger.error(f"❌ Failed to reinitialize S3 client: {e}")
+            logger.info("⚠️ S3 credentials provided but ignored - using network volume storage")
         
-        # Initialize handler AFTER S3 credentials are set
+        # Initialize handler
         global handler
         if handler is None:
             handler = initialize_handler()
-        elif s3_client:
-            # If handler exists but we have new S3 credentials, sync models
-            logger.info("🔄 S3 credentials provided - syncing models from S3")
-            sync_models_from_s3()
         endpoint = job_input.get("endpoint", "")
         
         # Route to appropriate endpoint
@@ -940,8 +697,6 @@ def runpod_handler(job):
             result = handler.get_model_info()
         elif endpoint == "debug_storage":
             result = debug_storage_info()
-        elif endpoint == "setup_models":
-            result = setup_models_in_s3()
         else:
             result = {
                 "status": "error",
@@ -953,8 +708,7 @@ def runpod_handler(job):
                     "canny_controlled_generation", 
                     "multi_controlnet_generation",
                     "get_model_info",
-                    "debug_storage",
-                    "setup_models"
+                    "debug_storage"
                 ]
             }
         
@@ -977,125 +731,9 @@ def runpod_handler(job):
 # Initialize handler at module level
 handler = None
 
-def auto_setup_models():
-    """Automatically download and upload models to S3 during container build"""
-    # Force rebuild: 2025-01-14 rebuild
-    if not s3_client:
-        logger.info("⏭️ S3 not configured, skipping auto model setup")
-        return
-    
-    try:
-        logger.info("🔍 Checking if models exist in S3...")
-        
-        # Check if models already exist in S3
-        bucket_name = os.environ.get("S3_BUCKET", S3_BUCKET)
-        
-        # Check for FLUX.1-Kontext model
-        kontext_exists = False
-        fill_exists = False
-        
-        try:
-            paginator = s3_client.get_paginator('list_objects_v2')
-            
-            # Check for Kontext model
-            kontext_pages = paginator.paginate(Bucket=bucket_name, Prefix='models/black-forest-labs--FLUX.1-Kontext-dev/')
-            for page in kontext_pages:
-                if 'Contents' in page and len(page['Contents']) > 0:
-                    kontext_exists = True
-                    break
-            
-            # Check for Fill model  
-            fill_pages = paginator.paginate(Bucket=bucket_name, Prefix='models/black-forest-labs--FLUX.1-Fill-dev/')
-            for page in fill_pages:
-                if 'Contents' in page and len(page['Contents']) > 0:
-                    fill_exists = True
-                    break
-                    
-        except Exception as e:
-            logger.warning(f"⚠️ Could not check S3 for existing models: {e}")
-        
-        if kontext_exists and fill_exists:
-            logger.info("✅ Models already exist in S3, skipping download")
-            return
-        
-        logger.info("📥 Models not found in S3, starting automatic download and upload...")
-        
-        # Check available disk space
-        import shutil
-        disk_usage = shutil.disk_usage("/workspace")
-        free_gb = disk_usage.free / (1024 ** 3)
-        
-        if free_gb < 12:  # Need at least 12GB for one model at a time
-            logger.error(f"❌ Insufficient disk space for auto setup: {free_gb:.1f}GB available, need 12GB")
-            return
-        
-        # Initialize a temporary handler for downloading
-        logger.info("🔄 Initializing temporary handler for model download...")
-        temp_handler = FluxKontextHandler()
-        
-        # Download and upload models one at a time to conserve disk space
-        models_to_setup = []
-        if not kontext_exists:
-            models_to_setup.append(("FLUX.1-Kontext", temp_handler.load_kontext_pipeline))
-        if not fill_exists:
-            models_to_setup.append(("FLUX.1-Fill", temp_handler.load_fill_pipeline))
-        
-        for model_name, load_func in models_to_setup:
-            try:
-                logger.info(f"📥 Setting up {model_name} model...")
-                
-                # Authenticate with HuggingFace
-                temp_handler.authenticate_hf()
-                
-                # Download model
-                load_func()
-                logger.info(f"✅ {model_name} model downloaded")
-                
-                # Upload to S3
-                logger.info(f"📤 Uploading {model_name} model to S3...")
-                sync_models_to_s3()
-                logger.info(f"✅ {model_name} model uploaded to S3")
-                
-                # Clean up GPU memory between models
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                gc.collect()
-                
-            except Exception as e:
-                logger.error(f"❌ Failed to setup {model_name} model: {e}")
-        
-        # Clean up
-        del temp_handler
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        gc.collect()
-        
-        logger.info("🎉 Automatic model setup completed!")
-        
-    except Exception as e:
-        logger.error(f"💥 Error in auto model setup: {e}")
-        # Don't raise - we want the container to start even if model setup fails
-
-# Run automatic model setup when the module is imported (during container build)
-logger.info("🔍 Checking environment variables for auto-setup...")
-logger.info(f"S3_ACCESS_KEY: {'✅ SET' if S3_ACCESS_KEY else '❌ NOT SET'}")
-logger.info(f"S3_SECRET_KEY: {'✅ SET' if S3_SECRET_KEY else '❌ NOT SET'}")
-logger.info(f"s3_client: {'✅ INITIALIZED' if s3_client else '❌ NOT INITIALIZED'}")
-
-hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
-logger.info(f"HF_TOKEN: {'✅ SET' if hf_token else '❌ NOT SET'}")
-
-if S3_ACCESS_KEY and S3_SECRET_KEY and s3_client and hf_token:
-    logger.info("🚀 Starting automatic model setup during container startup...")
-    auto_setup_models()
-else:
-    missing = []
-    if not S3_ACCESS_KEY: missing.append("aws_access_key_id")
-    if not S3_SECRET_KEY: missing.append("aws_secret_access_key") 
-    if not hf_token: missing.append("HF_TOKEN")
-    if not s3_client: missing.append("S3 client initialization")
-    
-    logger.info(f"⏭️ Skipping automatic model setup - Missing: {', '.join(missing)}")
+# Auto model setup removed - models will be downloaded to network volume on first use
+logger.info("🗂️ Using network volume for model storage: /runpod-volume/huggingface")
+logger.info("💡 Models will be downloaded to network volume on first use")
 
 if __name__ == "__main__":
     runpod.serverless.start({"handler": runpod_handler}) 
