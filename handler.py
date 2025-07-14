@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional, List
 import traceback
 import gc
 import os
+from huggingface_hub import login
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,11 +31,32 @@ class FluxKontextHandler:
         self.control_pipeline = None
         self.depth_detector = None
         self.canny_detector = None
+        self.hf_authenticated = False
+        
+    def authenticate_hf(self):
+        """Authenticate with Hugging Face if token is available"""
+        if not self.hf_authenticated:
+            hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
+            if hf_token:
+                try:
+                    logger.info("Authenticating with Hugging Face...")
+                    login(token=hf_token)
+                    self.hf_authenticated = True
+                    logger.info("✅ Hugging Face authentication successful")
+                except Exception as e:
+                    logger.error(f"❌ Hugging Face authentication failed: {e}")
+                    raise
+            else:
+                logger.warning("⚠️ No HF token found - may fail with gated models")
+        return self.hf_authenticated
         
     def load_kontext_pipeline(self):
         """Load the FluxKontextPipeline for instruction-based editing"""
         if self.kontext_pipeline is None:
             try:
+                # Authenticate with HF first
+                self.authenticate_hf()
+                
                 logger.info("Loading FluxKontextPipeline...")
                 self.kontext_pipeline = FluxKontextPipeline.from_pretrained(
                     "black-forest-labs/FLUX.1-Kontext-dev",
@@ -59,6 +81,9 @@ class FluxKontextHandler:
         """Load the FluxFillPipeline for traditional inpainting"""
         if self.fill_pipeline is None:
             try:
+                # Authenticate with HF first
+                self.authenticate_hf()
+                
                 logger.info("Loading FluxFillPipeline...")
                 self.fill_pipeline = FluxFillPipeline.from_pretrained(
                     "black-forest-labs/FLUX.1-Fill-dev",
@@ -522,6 +547,12 @@ def initialize_handler():
 def runpod_handler(job):
     """Main RunPod handler function"""
     try:
+        # Set HF_TOKEN from job env if provided
+        job_env = job.get("env", {})
+        if "HF_TOKEN" in job_env:
+            os.environ["HF_TOKEN"] = job_env["HF_TOKEN"]
+            logger.info("HF_TOKEN set from job environment")
+        
         # Initialize handler if not already done
         global handler
         if handler is None:
