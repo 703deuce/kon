@@ -48,17 +48,64 @@ python setup_models.py
 
 ### 3. Environment Variables
 
-Set these in your RunPod environment:
+**IMPORTANT**: Set these environment variables in your RunPod deployment configuration (not in code or GitHub):
 
+#### Required for Authentication:
 ```bash
-RUNPOD_API_KEY=your_runpod_api_key
-RUNPOD_ENDPOINT_ID=your_endpoint_id
+HF_TOKEN=your_huggingface_token_here
+```
+
+#### Optional for Optimization:
+```bash
 TRANSFORMERS_CACHE=/workspace/models
 DIFFUSERS_CACHE=/workspace/models
 HUGGINGFACE_HUB_CACHE=/workspace/models
 ```
 
-**Note**: `HUGGINGFACE_TOKEN` is only needed during model download (build time or setup), not during runtime.
+#### How to Set Environment Variables in RunPod:
+
+1. **Via RunPod Web Interface**: 
+   - Go to your endpoint settings
+   - Add environment variables in the "Environment Variables" section
+   - Set `HF_TOKEN` with your Hugging Face token
+
+2. **Via RunPod API/Config**:
+   ```json
+   {
+     "env": {
+       "HF_TOKEN": "your_huggingface_token_here"
+     }
+   }
+   ```
+
+3. **For Testing Locally**:
+   ```bash
+   export HF_TOKEN=your_huggingface_token_here
+   ```
+
+**Security Note**: Never commit API keys or tokens to GitHub. Always use environment variables set in your deployment platform.
+
+#### Alternative Secure Methods:
+
+4. **GitHub Secrets for CI/CD**:
+   ```yaml
+   # .github/workflows/deploy.yml
+   env:
+     HF_TOKEN: ${{ secrets.HF_TOKEN }}
+   ```
+
+5. **Configuration Management**:
+   - AWS Secrets Manager
+   - HashiCorp Vault  
+   - Docker secrets
+   - Kubernetes secrets
+
+6. **Local .env File** (not committed):
+   ```bash
+   # Create .env file locally
+   echo "HF_TOKEN=your_token_here" > .env
+   # Install python-dotenv: pip install python-dotenv
+   ```
 
 ## API Endpoints
 
@@ -150,6 +197,54 @@ If you get model loading errors:
 - Use `torch.compile()` for faster inference
 - Enable `use_safetensors=True` for faster loading
 - Reduce `num_inference_steps` for faster generation
+
+## Testing
+
+### 🔐 Security First: Never Commit API Keys
+
+**Create test files locally that are NOT committed to GitHub:**
+
+1. **Set Environment Variables**:
+   ```bash
+   export HF_TOKEN=your_huggingface_token_here
+   export RUNPOD_API_KEY=your_runpod_api_key_here
+   export RUNPOD_ENDPOINT=https://api.runpod.ai/v2/your_endpoint_id/run
+   ```
+
+2. **Create `test_local.py` (in .gitignore)**:
+   ```python
+   import requests
+   import base64
+   import os
+   
+   # Get credentials from environment (NEVER hardcode!)
+   hf_token = os.environ.get("HF_TOKEN")
+   api_key = os.environ.get("RUNPOD_API_KEY") 
+   endpoint = os.environ.get("RUNPOD_ENDPOINT")
+   
+   # Test instruction editing
+   with open("test_image.jpg", "rb") as f:
+       image_b64 = base64.b64encode(f.read()).decode()
+   
+   payload = {
+       "input": {
+           "endpoint": "instruction_edit",
+           "image": image_b64,
+           "prompt": "remove the shower rod and add a shower door",
+           "guidance_scale": 2.5,
+           "num_inference_steps": 30
+       }
+   }
+   
+   response = requests.post(endpoint, json=payload, headers={
+       "Authorization": f"Bearer {api_key}"
+   })
+   print(response.json())
+   ```
+
+3. **For RunPod Deployment**:
+   - Set `HF_TOKEN` in RunPod environment variables
+   - No need to pass token in API requests
 
 ## Development
 
