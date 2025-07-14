@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 # Configure S3 storage for model caching
 S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "https://s3api-eu-ro-1.runpod.io")
 S3_BUCKET = os.environ.get("S3_BUCKET", "ly11hhawq7")
-S3_ACCESS_KEY = os.environ.get("S3_ACCESS_KEY", "")
-S3_SECRET_KEY = os.environ.get("S3_SECRET_KEY", "")
+S3_ACCESS_KEY = os.environ.get("aws_access_key_id", "")
+S3_SECRET_KEY = os.environ.get("aws_secret_access_key", "")
 S3_REGION = os.environ.get("S3_REGION", "EU-RO-1")
 
 # Local cache directory
@@ -976,6 +976,118 @@ def runpod_handler(job):
 
 # Initialize handler at module level
 handler = None
+
+def auto_setup_models():
+    """Automatically download and upload models to S3 during container build"""
+    if not s3_client:
+        logger.info("⏭️ S3 not configured, skipping auto model setup")
+        return
+    
+    try:
+        logger.info("🔍 Checking if models exist in S3...")
+        
+        # Check if models already exist in S3
+        bucket_name = os.environ.get("S3_BUCKET", S3_BUCKET)
+        
+        # Check for FLUX.1-Kontext model
+        kontext_exists = False
+        fill_exists = False
+        
+        try:
+            paginator = s3_client.get_paginator('list_objects_v2')
+            
+            # Check for Kontext model
+            kontext_pages = paginator.paginate(Bucket=bucket_name, Prefix='models/black-forest-labs--FLUX.1-Kontext-dev/')
+            for page in kontext_pages:
+                if 'Contents' in page and len(page['Contents']) > 0:
+                    kontext_exists = True
+                    break
+            
+            # Check for Fill model  
+            fill_pages = paginator.paginate(Bucket=bucket_name, Prefix='models/black-forest-labs--FLUX.1-Fill-dev/')
+            for page in fill_pages:
+                if 'Contents' in page and len(page['Contents']) > 0:
+                    fill_exists = True
+                    break
+                    
+        except Exception as e:
+            logger.warning(f"⚠️ Could not check S3 for existing models: {e}")
+        
+        if kontext_exists and fill_exists:
+            logger.info("✅ Models already exist in S3, skipping download")
+            return
+        
+        logger.info("📥 Models not found in S3, starting automatic download and upload...")
+        
+        # Check available disk space
+        import shutil
+        disk_usage = shutil.disk_usage("/workspace")
+        free_gb = disk_usage.free / (1024 ** 3)
+        
+        if free_gb < 12:  # Need at least 12GB for one model at a time
+            logger.error(f"❌ Insufficient disk space for auto setup: {free_gb:.1f}GB available, need 12GB")
+            return
+        
+        # Initialize a temporary handler for downloading
+        logger.info("🔄 Initializing temporary handler for model download...")
+        temp_handler = FluxKontextHandler()
+        
+        # Download and upload models one at a time to conserve disk space
+        models_to_setup = []
+        if not kontext_exists:
+            models_to_setup.append(("FLUX.1-Kontext", temp_handler.load_kontext_pipeline))
+        if not fill_exists:
+            models_to_setup.append(("FLUX.1-Fill", temp_handler.load_fill_pipeline))
+        
+        for model_name, load_func in models_to_setup:
+            try:
+                logger.info(f"📥 Setting up {model_name} model...")
+                
+                # Authenticate with HuggingFace
+                temp_handler.authenticate_hf()
+                
+                # Download model
+                load_func()
+                logger.info(f"✅ {model_name} model downloaded")
+                
+                # Upload to S3
+                logger.info(f"📤 Uploading {model_name} model to S3...")
+                sync_models_to_s3()
+                logger.info(f"✅ {model_name} model uploaded to S3")
+                
+                # Clean up GPU memory between models
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                gc.collect()
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to setup {model_name} model: {e}")
+        
+        # Clean up
+        del temp_handler
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
+        
+        logger.info("🎉 Automatic model setup completed!")
+        
+    except Exception as e:
+        logger.error(f"💥 Error in auto model setup: {e}")
+        # Don't raise - we want the container to start even if model setup fails
+
+# Run automatic model setup when the module is imported (during container build)
+hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
+if S3_ACCESS_KEY and S3_SECRET_KEY and s3_client and hf_token:
+    logger.info("🚀 Starting automatic model setup during container build...")
+    auto_setup_models()
+else:
+    missing = []
+    if not S3_ACCESS_KEY: missing.append("aws_access_key_id")
+    if not S3_SECRET_KEY: missing.append("aws_secret_access_key") 
+    if not hf_token: missing.append("HF_TOKEN")
+    if not s3_client: missing.append("S3 client initialization")
+    
+    logger.info(f"⏭️ Skipping automatic model setup - Missing: {', '.join(missing)}")
 
 if __name__ == "__main__":
     runpod.serverless.start({"handler": runpod_handler}) 
