@@ -794,6 +794,35 @@ def runpod_handler(job):
             os.environ["HF_TOKEN"] = job_input["hf_token"]
             logger.info("HF_TOKEN set from job input")
         
+        # Set S3 credentials from job input if provided
+        if "s3_access_key" in job_input and "s3_secret_key" in job_input:
+            os.environ["S3_ACCESS_KEY"] = job_input["s3_access_key"]
+            os.environ["S3_SECRET_KEY"] = job_input["s3_secret_key"]
+            logger.info("S3 credentials set from job input")
+            
+            # Also set other S3 parameters if provided
+            if "s3_endpoint" in job_input:
+                os.environ["S3_ENDPOINT"] = job_input["s3_endpoint"]
+            if "s3_bucket" in job_input:
+                os.environ["S3_BUCKET"] = job_input["s3_bucket"]
+            if "s3_region" in job_input:
+                os.environ["S3_REGION"] = job_input["s3_region"]
+            
+            # Reinitialize S3 client with new credentials
+            global s3_client
+            try:
+                s3_client = boto3.client(
+                    's3',
+                    endpoint_url=os.environ.get("S3_ENDPOINT", S3_ENDPOINT),
+                    aws_access_key_id=os.environ.get("S3_ACCESS_KEY"),
+                    aws_secret_access_key=os.environ.get("S3_SECRET_KEY"),
+                    config=Config(signature_version='s3v4'),
+                    region_name=os.environ.get("S3_REGION", S3_REGION)
+                )
+                logger.info("✅ S3 client reinitialized with job credentials")
+            except Exception as e:
+                logger.error(f"❌ Failed to reinitialize S3 client: {e}")
+        
         # Initialize handler if not already done
         global handler
         if handler is None:
