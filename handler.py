@@ -231,6 +231,94 @@ def get_dir_size(path):
         pass
     return total_size
 
+def setup_models_in_s3():
+    """Setup S3 with FLUX models by downloading and uploading them"""
+    try:
+        logger.info("🚀 Starting S3 model setup process...")
+        
+        # Check disk space first
+        import shutil
+        disk_usage = shutil.disk_usage("/workspace")
+        free_gb = disk_usage.free / (1024 ** 3)
+        
+        logger.info(f"💾 Available disk space: {free_gb:.1f} GB")
+        
+        if free_gb < 15:
+            return {
+                "status": "error",
+                "error": f"Insufficient disk space: {free_gb:.1f} GB available, need at least 15GB",
+                "solution": "Use a larger RunPod template with more disk space"
+            }
+        
+        # Initialize a temporary handler to download models
+        logger.info("🔄 Initializing temporary handler for model download...")
+        temp_handler = FluxKontextHandler()
+        
+        # Authenticate with HuggingFace
+        temp_handler.authenticate_hf()
+        
+        models_downloaded = []
+        
+        # Download FLUX.1-Kontext model
+        logger.info("📥 Downloading FLUX.1-Kontext model...")
+        try:
+            temp_handler.load_kontext_pipeline()
+            models_downloaded.append("FLUX.1-Kontext-dev")
+            logger.info("✅ FLUX.1-Kontext model downloaded successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to download FLUX.1-Kontext: {e}")
+            return {
+                "status": "error",
+                "error": f"Failed to download FLUX.1-Kontext: {str(e)}"
+            }
+        
+        # Download FLUX.1-Fill model
+        logger.info("📥 Downloading FLUX.1-Fill model...")
+        try:
+            temp_handler.load_fill_pipeline()
+            models_downloaded.append("FLUX.1-Fill-dev")
+            logger.info("✅ FLUX.1-Fill model downloaded successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to download FLUX.1-Fill: {e}")
+            return {
+                "status": "error",
+                "error": f"Failed to download FLUX.1-Fill: {str(e)}"
+            }
+        
+        # Clean up GPU memory
+        del temp_handler
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
+        
+        # Upload models to S3
+        logger.info("📤 Uploading models to S3...")
+        sync_success = sync_models_to_s3()
+        
+        if sync_success:
+            logger.info("🎉 S3 model setup completed successfully!")
+            return {
+                "status": "success",
+                "message": "Models successfully downloaded and uploaded to S3",
+                "models_setup": models_downloaded,
+                "s3_sync": "completed"
+            }
+        else:
+            logger.error("❌ Failed to sync models to S3")
+            return {
+                "status": "error",
+                "error": "Models downloaded but failed to upload to S3",
+                "models_downloaded": models_downloaded
+            }
+            
+    except Exception as e:
+        logger.error(f"💥 Error in S3 model setup: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 class FluxKontextHandler:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -852,6 +940,8 @@ def runpod_handler(job):
             result = handler.get_model_info()
         elif endpoint == "debug_storage":
             result = debug_storage_info()
+        elif endpoint == "setup_models":
+            result = setup_models_in_s3()
         else:
             result = {
                 "status": "error",
@@ -863,7 +953,8 @@ def runpod_handler(job):
                     "canny_controlled_generation", 
                     "multi_controlnet_generation",
                     "get_model_info",
-                    "debug_storage"
+                    "debug_storage",
+                    "setup_models"
                 ]
             }
         
