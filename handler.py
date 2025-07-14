@@ -1077,9 +1077,16 @@ def auto_setup_models():
         # Don't raise - we want the container to start even if model setup fails
 
 # Run automatic model setup when the module is imported (during container build)
+logger.info("🔍 Checking environment variables for auto-setup...")
+logger.info(f"S3_ACCESS_KEY: {'✅ SET' if S3_ACCESS_KEY else '❌ NOT SET'}")
+logger.info(f"S3_SECRET_KEY: {'✅ SET' if S3_SECRET_KEY else '❌ NOT SET'}")
+logger.info(f"s3_client: {'✅ INITIALIZED' if s3_client else '❌ NOT INITIALIZED'}")
+
 hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
+logger.info(f"HF_TOKEN: {'✅ SET' if hf_token else '❌ NOT SET'}")
+
 if S3_ACCESS_KEY and S3_SECRET_KEY and s3_client and hf_token:
-    logger.info("🚀 Starting automatic model setup during container build...")
+    logger.info("🚀 Starting automatic model setup during container startup...")
     auto_setup_models()
 else:
     missing = []
