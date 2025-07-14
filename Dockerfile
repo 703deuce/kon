@@ -40,11 +40,8 @@ ENV DIFFUSERS_CACHE=/workspace/models
 ENV HUGGINGFACE_HUB_CACHE=/workspace/models
 ENV CUDA_VISIBLE_DEVICES=0
 
-# Optional: Download models during build (requires HF_TOKEN build arg)
-ARG HF_TOKEN
-RUN if [ -n "$HF_TOKEN" ]; then \
-    python setup_models.py; \
-    fi
+# Download models during runtime startup (will use environment variables)
+# Model setup now happens in handler.py when container starts
 
 # Start the handler
 CMD ["python", "-u", "handler.py"] 
