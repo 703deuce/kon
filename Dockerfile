@@ -29,7 +29,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create model cache directories
-RUN mkdir -p /workspace/models
+# Network volume directory will be created at runtime in handler.py
 
 # Copy application files
 COPY . .
@@ -39,9 +39,9 @@ ARG CACHE_BUST=1
 RUN echo "Cache bust: $CACHE_BUST"
 
 # Set environment variables
-ENV TRANSFORMERS_CACHE=/workspace/models
-ENV DIFFUSERS_CACHE=/workspace/models
-ENV HUGGINGFACE_HUB_CACHE=/workspace/models
+ENV TRANSFORMERS_CACHE=/runpod-volume/huggingface
+ENV DIFFUSERS_CACHE=/runpod-volume/huggingface
+ENV HUGGINGFACE_HUB_CACHE=/runpod-volume/huggingface
 ENV CUDA_VISIBLE_DEVICES=0
 
 # Download models during runtime startup (will use environment variables)

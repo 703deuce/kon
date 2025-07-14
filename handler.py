@@ -30,8 +30,8 @@ S3_ACCESS_KEY = os.environ.get("aws_access_key_id", "")
 S3_SECRET_KEY = os.environ.get("aws_secret_access_key", "")
 S3_REGION = os.environ.get("S3_REGION", "EU-RO-1")
 
-# Local cache directory
-MODEL_CACHE_DIR = "/workspace/models"
+# Network volume cache directory (RunPod serverless network volume)
+MODEL_CACHE_DIR = "/runpod-volume/huggingface"
 
 # Create S3 client if credentials are available
 s3_client = None
@@ -79,7 +79,7 @@ def sync_models_from_s3():
             if 'Contents' in page:
                 for obj in page['Contents']:
                     s3_key = obj['Key']
-                    local_path = os.path.join("/workspace", s3_key)
+                    local_path = os.path.join("/runpod-volume", s3_key)
                     
                     # Create directory if it doesn't exist
                     os.makedirs(os.path.dirname(local_path), exist_ok=True)
@@ -116,7 +116,7 @@ def sync_models_to_s3():
             for file in files:
                 local_path = os.path.join(root, file)
                 # Convert local path to S3 key
-                rel_path = os.path.relpath(local_path, "/workspace")
+                rel_path = os.path.relpath(local_path, "/runpod-volume")
                 s3_key = rel_path.replace("\\", "/")  # Ensure forward slashes
                 
                 try:

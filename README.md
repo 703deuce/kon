@@ -57,9 +57,9 @@ HF_TOKEN=your_huggingface_token_here
 
 #### Optional for Optimization:
 ```bash
-TRANSFORMERS_CACHE=/workspace/models
-DIFFUSERS_CACHE=/workspace/models
-HUGGINGFACE_HUB_CACHE=/workspace/models
+TRANSFORMERS_CACHE=/runpod-volume/huggingface
+DIFFUSERS_CACHE=/runpod-volume/huggingface
+HUGGINGFACE_HUB_CACHE=/runpod-volume/huggingface
 ```
 
 #### How to Set Environment Variables in RunPod:
@@ -189,7 +189,7 @@ The handler includes several optimizations:
 If you get model loading errors:
 
 1. **First Time Setup**: Models need to be downloaded once with HF authentication
-2. **Cache Location**: Ensure cache directories exist in `/workspace/models`
+2. **Cache Location**: Ensure cache directories exist in `/runpod-volume/huggingface`
 3. **Memory**: Ensure sufficient GPU memory (24GB+ recommended)
 
 ### Performance Issues

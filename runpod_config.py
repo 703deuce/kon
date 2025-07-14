@@ -78,15 +78,15 @@ LOGGING_CONFIG = {
 
 # Cache Configuration
 CACHE_CONFIG = {
-    "model_cache_dir": "/workspace/models",
+    "model_cache_dir": "/runpod-volume/huggingface",
     "temp_cache_dir": "/tmp/flux_cache"
 }
 
 # Environment Variables
 ENV_VARS = {
-    "TRANSFORMERS_CACHE": "/workspace/models",
-    "DIFFUSERS_CACHE": "/workspace/models",
-    "HUGGINGFACE_HUB_CACHE": "/workspace/models",
+    "TRANSFORMERS_CACHE": "/runpod-volume/huggingface",
+    "DIFFUSERS_CACHE": "/runpod-volume/huggingface",
+    "HUGGINGFACE_HUB_CACHE": "/runpod-volume/huggingface",
     "CUDA_VISIBLE_DEVICES": "0"
 }
 
