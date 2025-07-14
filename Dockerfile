@@ -34,6 +34,10 @@ RUN mkdir -p /workspace/models
 # Copy application files
 COPY . .
 
+# Force cache invalidation - this will make Docker rebuild from here down
+ARG CACHE_BUST=1
+RUN echo "Cache bust: $CACHE_BUST"
+
 # Set environment variables
 ENV TRANSFORMERS_CACHE=/workspace/models
 ENV DIFFUSERS_CACHE=/workspace/models
