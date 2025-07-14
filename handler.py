@@ -979,6 +979,7 @@ handler = None
 
 def auto_setup_models():
     """Automatically download and upload models to S3 during container build"""
+    # Force rebuild: 2025-01-14 rebuild
     if not s3_client:
         logger.info("⏭️ S3 not configured, skipping auto model setup")
         return
