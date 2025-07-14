@@ -28,7 +28,7 @@ S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "https://s3api-eu-ro-1.runpod.io")
 S3_BUCKET = os.environ.get("S3_BUCKET", "ly11hhawq7")
 S3_ACCESS_KEY = os.environ.get("S3_ACCESS_KEY", "")
 S3_SECRET_KEY = os.environ.get("S3_SECRET_KEY", "")
-S3_REGION = os.environ.get("S3_REGION", "eu-ro-1")
+S3_REGION = os.environ.get("S3_REGION", "EU-RO-1")
 
 # Local cache directory
 MODEL_CACHE_DIR = "/workspace/models"
@@ -71,7 +71,8 @@ def sync_models_from_s3():
         
         # List all objects in the models/ prefix
         paginator = s3_client.get_paginator('list_objects_v2')
-        page_iterator = paginator.paginate(Bucket=S3_BUCKET, Prefix='models/')
+        bucket_name = os.environ.get("S3_BUCKET", S3_BUCKET)
+        page_iterator = paginator.paginate(Bucket=bucket_name, Prefix='models/')
         
         downloaded_files = 0
         for page in page_iterator:
@@ -86,7 +87,7 @@ def sync_models_from_s3():
                     # Download file if it doesn't exist locally or is newer
                     if not os.path.exists(local_path):
                         logger.info(f"📥 Downloading {s3_key}")
-                        s3_client.download_file(S3_BUCKET, s3_key, local_path)
+                        s3_client.download_file(bucket_name, s3_key, local_path)
                         downloaded_files += 1
         
         logger.info(f"✅ Synced {downloaded_files} files from S3")
@@ -109,6 +110,7 @@ def sync_models_to_s3():
             logger.info("📁 No local models to sync")
             return True
         
+        bucket_name = os.environ.get("S3_BUCKET", S3_BUCKET)
         uploaded_files = 0
         for root, dirs, files in os.walk(MODEL_CACHE_DIR):
             for file in files:
@@ -119,12 +121,12 @@ def sync_models_to_s3():
                 
                 try:
                     # Check if file exists in S3
-                    s3_client.head_object(Bucket=S3_BUCKET, Key=s3_key)
+                    s3_client.head_object(Bucket=bucket_name, Key=s3_key)
                     logger.debug(f"⏭️ Skipping {s3_key} (already exists)")
                 except:
                     # File doesn't exist in S3, upload it
                     logger.info(f"📤 Uploading {s3_key}")
-                    s3_client.upload_file(local_path, S3_BUCKET, s3_key)
+                    s3_client.upload_file(local_path, bucket_name, s3_key)
                     uploaded_files += 1
         
         logger.info(f"✅ Uploaded {uploaded_files} files to S3")
@@ -143,9 +145,9 @@ def debug_storage_info():
         debug_info = {
             "status": "success",
             "s3_config": {
-                "endpoint": S3_ENDPOINT,
-                "bucket": S3_BUCKET,
-                "region": S3_REGION
+                "endpoint": os.environ.get("S3_ENDPOINT", S3_ENDPOINT),
+                "bucket": os.environ.get("S3_BUCKET", S3_BUCKET),
+                "region": os.environ.get("S3_REGION", S3_REGION)
             },
             "local_cache": {
                 "cache_dir": MODEL_CACHE_DIR,
@@ -190,7 +192,8 @@ def debug_storage_info():
         # Test S3 connection
         if s3_client:
             try:
-                response = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix='models/', MaxKeys=5)
+                bucket_name = os.environ.get("S3_BUCKET", S3_BUCKET)
+                response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix='models/', MaxKeys=5)
                 debug_info["s3_test"] = {
                     "status": "success",
                     "objects_found": len(response.get('Contents', [])),
@@ -813,13 +816,14 @@ def runpod_handler(job):
             try:
                 s3_client = boto3.client(
                     's3',
-                    endpoint_url=os.environ.get("S3_ENDPOINT", S3_ENDPOINT),
+                    endpoint_url=os.environ.get("S3_ENDPOINT"),
                     aws_access_key_id=os.environ.get("S3_ACCESS_KEY"),
                     aws_secret_access_key=os.environ.get("S3_SECRET_KEY"),
                     config=Config(signature_version='s3v4'),
-                    region_name=os.environ.get("S3_REGION", S3_REGION)
+                    region_name=os.environ.get("S3_REGION")
                 )
                 logger.info("✅ S3 client reinitialized with job credentials")
+                logger.info(f"🔧 S3 Config: endpoint={os.environ.get('S3_ENDPOINT')}, bucket={os.environ.get('S3_BUCKET')}, region={os.environ.get('S3_REGION')}")
             except Exception as e:
                 logger.error(f"❌ Failed to reinitialize S3 client: {e}")
         
