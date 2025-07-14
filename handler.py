@@ -797,7 +797,7 @@ def runpod_handler(job):
             os.environ["HF_TOKEN"] = job_input["hf_token"]
             logger.info("HF_TOKEN set from job input")
         
-        # Set S3 credentials from job input if provided
+        # Set S3 credentials from job input BEFORE initializing handler
         if "s3_access_key" in job_input and "s3_secret_key" in job_input:
             os.environ["S3_ACCESS_KEY"] = job_input["s3_access_key"]
             os.environ["S3_SECRET_KEY"] = job_input["s3_secret_key"]
@@ -827,10 +827,14 @@ def runpod_handler(job):
             except Exception as e:
                 logger.error(f"❌ Failed to reinitialize S3 client: {e}")
         
-        # Initialize handler if not already done
+        # Initialize handler AFTER S3 credentials are set
         global handler
         if handler is None:
             handler = initialize_handler()
+        elif s3_client:
+            # If handler exists but we have new S3 credentials, sync models
+            logger.info("🔄 S3 credentials provided - syncing models from S3")
+            sync_models_from_s3()
         endpoint = job_input.get("endpoint", "")
         
         # Route to appropriate endpoint
