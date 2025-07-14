@@ -1,12 +1,10 @@
 torch>=2.0.0
-diffusers>=0.30.0
 transformers>=4.40.0
 accelerate>=0.25.0
 safetensors>=0.4.0
 pillow>=9.0.0
 numpy>=1.21.0
 opencv-python>=4.5.0
-runpod>=1.5.0
 xformers>=0.0.20
 torchvision>=0.15.0
 sentencepiece>=0.1.99

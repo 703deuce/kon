@@ -5,7 +5,7 @@ import io
 import json
 import logging
 from PIL import Image
-from diffusers import FluxFillPipeline, FluxControlNetPipeline, FluxPipeline
+from diffusers import FluxKontextPipeline, FluxFillPipeline, FluxControlNetPipeline
 from diffusers.models import FluxControlNetModel
 from transformers import pipeline
 import numpy as np
@@ -23,84 +23,61 @@ class FluxKontextHandler:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
-        self.fill_pipeline = None
         self.kontext_pipeline = None
-        self.controlnet_pipeline = None
-        self.depth_estimator = None
+        self.fill_pipeline = None
+        self.depth_controlnet = None
+        self.canny_controlnet = None
+        self.control_pipeline = None
+        self.depth_detector = None
         self.canny_detector = None
         
-        # Initialize models
-        self._initialize_models()
-    
-    def _initialize_models(self):
-        """Initialize all required models using local diffusers (no API authentication needed)"""
-        try:
-            logger.info("Initializing FLUX.1 Kontext models using local diffusers...")
-            
-            # No authentication needed for local inference
-            logger.info("✅ Using local diffusers approach - no API authentication required")
-            
-            # Initialize Fill Pipeline for mask-based inpainting
-            logger.info("Loading FLUX.1 Fill pipeline...")
-            self.fill_pipeline = FluxFillPipeline.from_pretrained(
-                "black-forest-labs/FLUX.1-Fill-dev",
-                torch_dtype=self.dtype,
-                use_safetensors=True
-            ).to(self.device)
-            
-            # Initialize Kontext Pipeline for instruction-based editing
-            logger.info("Loading FLUX.1 Kontext pipeline...")
-            self.kontext_pipeline = FluxPipeline.from_pretrained(
-                "black-forest-labs/FLUX.1-Kontext-dev",
-                torch_dtype=self.dtype,
-                use_safetensors=True
-            ).to(self.device)
-            
-            # Initialize ControlNet models
-            logger.info("Loading ControlNet models...")
-            controlnet_depth = FluxControlNetModel.from_pretrained(
-                "black-forest-labs/FLUX.1-Depth-dev",
-                torch_dtype=self.dtype,
-                use_safetensors=True
-            )
-            
-            controlnet_canny = FluxControlNetModel.from_pretrained(
-                "black-forest-labs/FLUX.1-Canny-dev", 
-                torch_dtype=self.dtype,
-                use_safetensors=True
-            )
-            
-            # Initialize ControlNet Pipeline
-            self.controlnet_pipeline = FluxControlNetPipeline.from_pretrained(
-                "black-forest-labs/FLUX.1-dev",
-                controlnet=[controlnet_depth, controlnet_canny],
-                torch_dtype=self.dtype,
-                use_safetensors=True
-            ).to(self.device)
-            
-            # Initialize depth estimator
-            logger.info("Loading depth estimator...")
-            self.depth_estimator = pipeline(
-                "depth-estimation",
-                model="Intel/dpt-hybrid-midas",
-                device=0 if torch.cuda.is_available() else -1
-            )
-            
-            # Enable memory efficient attention
-            if hasattr(self.fill_pipeline, 'enable_memory_efficient_attention'):
-                self.fill_pipeline.enable_memory_efficient_attention()
-            if hasattr(self.kontext_pipeline, 'enable_memory_efficient_attention'):
-                self.kontext_pipeline.enable_memory_efficient_attention()
-            if hasattr(self.controlnet_pipeline, 'enable_memory_efficient_attention'):
-                self.controlnet_pipeline.enable_memory_efficient_attention()
-            
-            logger.info("✅ All models initialized successfully using local diffusers")
-            
-        except Exception as e:
-            logger.error(f"❌ Error initializing models: {str(e)}")
-            logger.error("💡 Make sure model weights are downloaded locally")
-            logger.error("💡 You may need to download models once with HF authentication, then they'll work locally")
-            raise e
+    def load_kontext_pipeline(self):
+        """Load the FluxKontextPipeline for instruction-based editing"""
+        if self.kontext_pipeline is None:
+            try:
+                logger.info("Loading FluxKontextPipeline...")
+                self.kontext_pipeline = FluxKontextPipeline.from_pretrained(
+                    "black-forest-labs/FLUX.1-Kontext-dev",
+                    torch_dtype=self.dtype,
+                    use_safetensors=True
+                )
+                self.kontext_pipeline.to(self.device)
+                
+                # Enable memory efficient attention
+                if hasattr(self.kontext_pipeline, 'enable_model_cpu_offload'):
+                    self.kontext_pipeline.enable_model_cpu_offload()
+                if hasattr(self.kontext_pipeline, 'enable_xformers_memory_efficient_attention'):
+                    self.kontext_pipeline.enable_xformers_memory_efficient_attention()
+                    
+                logger.info("FluxKontextPipeline loaded successfully")
+            except Exception as e:
+                logger.error(f"Error loading FluxKontextPipeline: {e}")
+                raise
+        return self.kontext_pipeline
+        
+    def load_fill_pipeline(self):
+        """Load the FluxFillPipeline for traditional inpainting"""
+        if self.fill_pipeline is None:
+            try:
+                logger.info("Loading FluxFillPipeline...")
+                self.fill_pipeline = FluxFillPipeline.from_pretrained(
+                    "black-forest-labs/FLUX.1-Fill-dev",
+                    torch_dtype=self.dtype,
+                    use_safetensors=True
+                )
+                self.fill_pipeline.to(self.device)
+                
+                # Enable memory efficient attention
+                if hasattr(self.fill_pipeline, 'enable_model_cpu_offload'):
+                    self.fill_pipeline.enable_model_cpu_offload()
+                if hasattr(self.fill_pipeline, 'enable_xformers_memory_efficient_attention'):
+                    self.fill_pipeline.enable_xformers_memory_efficient_attention()
+                    
+                logger.info("FluxFillPipeline loaded successfully")
+            except Exception as e:
+                logger.error(f"Error loading FluxFillPipeline: {e}")
+                raise
+        return self.fill_pipeline
     
     def _image_to_base64(self, image: Image.Image) -> str:
         """Convert PIL Image to base64 string"""
@@ -148,6 +125,9 @@ class FluxKontextHandler:
     def fill_image(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Fill/inpaint image using FLUX.1 Fill"""
         try:
+            # Load the Fill pipeline
+            pipeline = self.load_fill_pipeline()
+            
             # Extract parameters
             image_b64 = params.get("image")
             mask_data = params.get("mask")
@@ -186,7 +166,7 @@ class FluxKontextHandler:
                 torch.manual_seed(seed)
             
             # Generate
-            result = self.fill_pipeline(
+            result = pipeline(
                 prompt=prompt,
                 image=image,
                 mask_image=mask,
@@ -226,6 +206,9 @@ class FluxKontextHandler:
     def instruction_edit(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """True FLUX.1 Kontext instruction-based editing without masks"""
         try:
+            # Load the Kontext pipeline
+            pipeline = self.load_kontext_pipeline()
+            
             # Extract parameters
             image_b64 = params.get("image")
             instruction = params.get("instruction") or params.get("prompt", "")
@@ -254,7 +237,7 @@ class FluxKontextHandler:
                 torch.manual_seed(seed)
             
             # Generate using instruction-based editing
-            result = self.kontext_pipeline(
+            result = pipeline(
                 prompt=instruction,
                 image=image,
                 num_inference_steps=num_inference_steps,
@@ -318,7 +301,7 @@ class FluxKontextHandler:
                 torch.manual_seed(seed)
             
             # Generate
-            result = self.controlnet_pipeline(
+            result = self.control_pipeline(
                 prompt=prompt,
                 control_image=[depth_map],
                 controlnet_conditioning_scale=[controlnet_conditioning_scale],
@@ -387,7 +370,7 @@ class FluxKontextHandler:
                 torch.manual_seed(seed)
             
             # Generate
-            result = self.controlnet_pipeline(
+            result = self.control_pipeline(
                 prompt=prompt,
                 control_image=[canny_edges],
                 controlnet_conditioning_scale=[controlnet_conditioning_scale],
@@ -461,7 +444,7 @@ class FluxKontextHandler:
                 torch.manual_seed(seed)
             
             # Generate with multiple ControlNets
-            result = self.controlnet_pipeline(
+            result = self.control_pipeline(
                 prompt=prompt,
                 control_image=[depth_map, canny_edges],
                 controlnet_conditioning_scale=[depth_conditioning_scale, canny_conditioning_scale],

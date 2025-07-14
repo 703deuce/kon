@@ -1,4 +1,4 @@
-FROM runpod/pytorch:2.2.0-py3.11-cuda12.1.1-devel-ubuntu22.04
+FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-devel
 
 # Set working directory
 WORKDIR /workspace
@@ -16,9 +16,14 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install setup dependencies
+# Install RunPod SDK first
+RUN pip install --no-cache-dir runpod>=1.5.0
+
+# Install diffusers from git (required for FluxKontextPipeline)
+RUN pip install --no-cache-dir git+https://github.com/huggingface/diffusers.git
+
+# Copy requirements and install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir huggingface_hub  # Only needed for setup
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create model cache directories
@@ -31,27 +36,13 @@ COPY . .
 ENV TRANSFORMERS_CACHE=/workspace/models
 ENV DIFFUSERS_CACHE=/workspace/models
 ENV HUGGINGFACE_HUB_CACHE=/workspace/models
-ENV PYTHONPATH=/workspace
+ENV CUDA_VISIBLE_DEVICES=0
 
-# Make setup script executable
-RUN chmod +x setup_models.py
-
-# Download models during build (requires HUGGINGFACE_TOKEN build arg)
-ARG HUGGINGFACE_TOKEN
-ENV HUGGINGFACE_TOKEN=$HUGGINGFACE_TOKEN
-RUN if [ -n "$HUGGINGFACE_TOKEN" ]; then \
-        echo "Downloading models during build..."; \
-        python setup_models.py; \
-    else \
-        echo "HUGGINGFACE_TOKEN not provided - models will need to be downloaded at runtime"; \
+# Optional: Download models during build (requires HF_TOKEN build arg)
+ARG HF_TOKEN
+RUN if [ -n "$HF_TOKEN" ]; then \
+    python setup_models.py; \
     fi
 
-# Expose port
-EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Run the handler
-CMD ["python", "handler.py"] 
+# Start the handler
+CMD ["python", "-u", "handler.py"] 

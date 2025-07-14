@@ -7,7 +7,7 @@ Downloads models once during container initialization.
 import os
 import logging
 from huggingface_hub import login
-from diffusers import FluxFillPipeline, FluxPipeline
+from diffusers import FluxKontextPipeline, FluxFillPipeline, FluxPipeline
 from diffusers.models import FluxControlNetModel
 from transformers import pipeline
 
@@ -19,9 +19,9 @@ def download_models():
     """Download all required models to local cache"""
     try:
         # Get HF token from environment
-        hf_token = os.environ.get("HUGGINGFACE_TOKEN")
+        hf_token = os.environ.get("HF_TOKEN")
         if not hf_token:
-            raise ValueError("HUGGINGFACE_TOKEN environment variable is required for model download")
+            raise ValueError("HF_TOKEN environment variable is required for model download")
         
         # Login to Hugging Face
         logger.info("Authenticating with Hugging Face...")
@@ -39,7 +39,7 @@ def download_models():
         
         # Download FLUX.1 Kontext model
         logger.info("Downloading FLUX.1 Kontext model...")
-        FluxPipeline.from_pretrained(
+        FluxKontextPipeline.from_pretrained(
             "black-forest-labs/FLUX.1-Kontext-dev",
             torch_dtype="auto",
             use_safetensors=True
