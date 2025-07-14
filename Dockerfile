@@ -42,6 +42,7 @@ ENV CUDA_VISIBLE_DEVICES=0
 
 # Download models during runtime startup (will use environment variables)
 # Model setup now happens in handler.py when container starts
+# Force refresh: 2025-01-14
 
 # Start the handler
 CMD ["python", "-u", "handler.py"] 
