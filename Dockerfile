@@ -4,6 +4,8 @@ FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-devel
 WORKDIR /workspace
 
 # Install system dependencies
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
 RUN apt-get update && apt-get install -y \
     git \
     wget \
