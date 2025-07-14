@@ -1,6 +1,9 @@
 # Test files with sensitive data
 test_*.py
 *_test.py
+debug_storage.py
+test_hf_token.py
+test_local.py
 *.env
 
 # RunPod logs

@@ -9,4 +9,5 @@ xformers>=0.0.20
 torchvision>=0.15.0
 sentencepiece>=0.1.99
 protobuf>=3.20.0
-huggingface_hub>=0.20.0 
+huggingface_hub>=0.20.0
+boto3>=1.26.0 
