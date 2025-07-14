@@ -84,7 +84,6 @@ CACHE_CONFIG = {
 
 # Environment Variables
 ENV_VARS = {
-    "HUGGINGFACE_TOKEN": os.environ.get("HUGGINGFACE_TOKEN"),  # REQUIRED: Set your Hugging Face token
     "TRANSFORMERS_CACHE": "/workspace/models",
     "DIFFUSERS_CACHE": "/workspace/models",
     "HUGGINGFACE_HUB_CACHE": "/workspace/models",

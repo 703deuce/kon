@@ -1,525 +1,193 @@
 # FLUX.1 Kontext RunPod Serverless
 
-A complete RunPod serverless deployment for FLUX.1 Kontext models, providing powerful image generation and editing capabilities through multiple API endpoints.
+Complete RunPod serverless deployment for FLUX.1 Kontext image editing models using local diffusers.
 
 ## Features
 
-- **Instruction-Based Editing**: True FLUX.1 Kontext - just tell it what to change, no masks needed!
-- **Fill/Inpainting**: Advanced image inpainting using FLUX.1 Fill with optional masks
-- **Depth Control**: Structure-preserving image generation with depth maps
-- **Canny Edge Control**: Edge-guided image generation
-- **Multi-ControlNet**: Combined depth + canny control for precise generation
-- **GPU Optimized**: Efficient memory management and CUDA acceleration
-- **Base64 Image Support**: Easy integration with web applications
+- **Local Processing**: No external API calls or per-request fees
+- **Dual Image Editing Approaches**:
+  - `instruction_edit`: True FLUX.1 Kontext instruction-based editing (like Replicate)
+  - `fill_image`: Traditional inpainting with optional masks
+- **ControlNet Support**: Depth and Canny edge control
+- **Multi-ControlNet**: Combined depth and edge control
+- **GPU Optimized**: Memory efficient attention and SafeTensors
+- **No Authentication**: Runs entirely local after model download
 
 ## Quick Start
 
-### 1. Deploy to RunPod
+### 1. RunPod Setup
 
-1. **Fork/Clone this repository**
-   ```bash
-   git clone https://github.com/703deuce/kon.git
-   cd kon
-   ```
+```bash
+# Clone repository
+git clone https://github.com/703deuce/kon.git
+cd kon
 
-2. **Create RunPod Serverless Endpoint**
-   - Go to [RunPod Console](https://runpod.io/console/serverless)
-   - Click "New Endpoint"
-   - Configure your endpoint:
-     - **Source**: GitHub (connect your forked repo)
-     - **Branch**: main
-     - **Docker Image**: Leave empty (will use Dockerfile)
-     - **GPU**: RTX 4090 or A100 (recommended)
-     - **Memory**: 24GB+
-     - **Disk**: 50GB+
-
-3. **Environment Variables** (REQUIRED for FLUX.1 models)
-   ```
-   HUGGINGFACE_TOKEN=your_huggingface_token_here
-   TRANSFORMERS_CACHE=/workspace/models
-   DIFFUSERS_CACHE=/workspace/models
-   HUGGINGFACE_HUB_CACHE=/workspace/models
-   ```
-
-   **⚠️ IMPORTANT**: You MUST set `HUGGINGFACE_TOKEN` to access FLUX.1 models:
-   - Go to [Hugging Face Settings](https://huggingface.co/settings/tokens)
-   - Create a new token with "Read" permissions
-   - Accept the license for [FLUX.1-Fill-dev](https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev) and [FLUX.1-Kontext-dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev)
-   - Add the token to your RunPod environment variables
-
-4. **Deploy**
-   - Click "Deploy"
-   - Wait for deployment (first run may take 15-20 minutes for model downloads)
-
-## 🔐 Hugging Face Authentication Setup
-
-**Before deploying**, you MUST set up Hugging Face authentication:
-
-### Step 1: Create Hugging Face Account
-- Sign up at [Hugging Face](https://huggingface.co)
-
-### Step 2: Accept Model Licenses
-- Visit [FLUX.1-Fill-dev](https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev) and accept license
-- Visit [FLUX.1-Kontext-dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) and accept license
-
-### Step 3: Create Access Token
-- Go to [HF Settings > Tokens](https://huggingface.co/settings/tokens)
-- Click "New Token"
-- Select "Read" permissions
-- Copy the generated token
-
-### Step 4: Add to RunPod Environment
-- In RunPod console, go to your endpoint settings
-- Add environment variable: `HUGGINGFACE_TOKEN` = `your_token_here`
-- Redeploy if already deployed
-
-### 2. Test Your Endpoint
-
-```python
-import requests
-import base64
-import json
-
-# Your RunPod endpoint URL
-ENDPOINT_URL = "https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/runsync"
-API_KEY = "YOUR_RUNPOD_API_KEY"
-
-# Test model info
-response = requests.post(
-    ENDPOINT_URL,
-    headers={"Authorization": f"Bearer {API_KEY}"},
-    json={"input": {"endpoint": "get_model_info"}}
-)
-print(response.json())
+# Deploy to RunPod using these files
 ```
+
+### 2. Model Download Options
+
+**Option A: Download during Docker build (Recommended)**
+
+```bash
+# Build with models pre-downloaded
+docker build --build-arg HUGGINGFACE_TOKEN=your_hf_token_here -t flux-kontext .
+```
+
+**Option B: Download at runtime**
+
+If you didn't build with models, run the setup script in your container:
+
+```bash
+# Set environment variable
+export HUGGINGFACE_TOKEN=your_hf_token_here
+
+# Download models
+python setup_models.py
+```
+
+### 3. Environment Variables
+
+Set these in your RunPod environment:
+
+```bash
+RUNPOD_API_KEY=your_runpod_api_key
+RUNPOD_ENDPOINT_ID=your_endpoint_id
+TRANSFORMERS_CACHE=/workspace/models
+DIFFUSERS_CACHE=/workspace/models
+HUGGINGFACE_HUB_CACHE=/workspace/models
+```
+
+**Note**: `HUGGINGFACE_TOKEN` is only needed during model download (build time or setup), not during runtime.
 
 ## API Endpoints
 
-### 1. Instruction Edit (True FLUX.1 Kontext)
+### Instruction Edit (Recommended)
 
-**Endpoint**: `instruction_edit`
-
-True FLUX.1 Kontext instruction-based editing - just tell it what to change, no mask needed!
-
-**Required Parameters**:
-- `image`: Base64 encoded input image
-- `instruction`: Natural language instruction describing what to change
-
-**Optional Parameters**:
-- `num_inference_steps`: Number of denoising steps (default: 30)
-- `guidance_scale`: Instruction adherence strength (default: 3.5)
-- `seed`: Random seed for reproducibility
-- `width`: Output width (default: 1024)
-- `height`: Output height (default: 1024)
-
-**Example**:
-```python
-payload = {
-    "input": {
-        "endpoint": "instruction_edit",
-        "image": "base64_encoded_image",
-        "instruction": "change the sky to sunset",
-        "num_inference_steps": 30,
-        "guidance_scale": 3.5,
-        "seed": 42
-    }
-}
-```
-
-### 2. Fill Image (Inpainting)
-
-**Endpoint**: `fill_image`
-
-Fill or edit parts of an image using a mask.
-
-**Required Parameters**:
-- `image`: Base64 encoded input image
-- `prompt`: Text description of desired changes
-
-**Optional Parameters**:
-- `mask`: Base64 encoded mask image (white = edit, black = keep). If not provided, the model will intelligently edit the entire image based on the prompt (like Replicate)
-- `num_inference_steps`: Number of denoising steps (default: 30)
-- `guidance_scale`: Prompt adherence strength (default: 30.0)
-- `strength`: Inpainting strength (default: 0.8)
-- `seed`: Random seed for reproducibility
-- `width`: Output width (default: 1024)
-- `height`: Output height (default: 1024)
-
-**Example with mask** (targeted editing):
-```python
-payload = {
-    "input": {
-        "endpoint": "fill_image",
-        "image": "base64_encoded_image",
-        "mask": "base64_encoded_mask", 
-        "prompt": "a beautiful sunset over mountains",
-        "num_inference_steps": 30,
-        "guidance_scale": 30.0,
-        "seed": 42
-    }
-}
-```
-
-**Example without mask** (instruction-based editing like Replicate):
-```python
-payload = {
-    "input": {
-        "endpoint": "fill_image",
-        "image": "base64_encoded_image",
-        "prompt": "change the sky to a beautiful sunset over mountains",
-        "num_inference_steps": 30,
-        "guidance_scale": 30.0,
-        "seed": 42
-    }
-}
-```
-
-### 3. Depth Controlled Generation
-
-**Endpoint**: `depth_controlled_generation`
-
-Generate images while preserving the depth structure of the input.
-
-**Required Parameters**:
-- `image`: Base64 encoded input image
-- `prompt`: Text description of desired output
-
-**Optional Parameters**:
-- `num_inference_steps`: Number of denoising steps (default: 30)
-- `guidance_scale`: Prompt adherence strength (default: 3.5)
-- `controlnet_conditioning_scale`: Depth control strength (default: 0.6)
-- `seed`: Random seed for reproducibility
-- `width`: Output width (default: 1024)
-- `height`: Output height (default: 1024)
-
-**Example**:
-```python
-payload = {
-    "input": {
-        "endpoint": "depth_controlled_generation",
-        "image": "base64_encoded_image",
-        "prompt": "a futuristic cityscape at night",
-        "controlnet_conditioning_scale": 0.7,
-        "seed": 123
-    }
-}
-```
-
-### 4. Canny Edge Controlled Generation
-
-**Endpoint**: `canny_controlled_generation`
-
-Generate images guided by edge detection from the input.
-
-**Required Parameters**:
-- `image`: Base64 encoded input image
-- `prompt`: Text description of desired output
-
-**Optional Parameters**:
-- `num_inference_steps`: Number of denoising steps (default: 30)
-- `guidance_scale`: Prompt adherence strength (default: 3.5)
-- `controlnet_conditioning_scale`: Edge control strength (default: 0.6)
-- `low_threshold`: Canny low threshold (default: 100)
-- `high_threshold`: Canny high threshold (default: 200)
-- `seed`: Random seed for reproducibility
-- `width`: Output width (default: 1024)
-- `height`: Output height (default: 1024)
-
-**Example**:
-```python
-payload = {
-    "input": {
-        "endpoint": "canny_controlled_generation",
-        "image": "base64_encoded_image",
-        "prompt": "an artistic sketch of a person",
-        "low_threshold": 50,
-        "high_threshold": 150,
-        "seed": 456
-    }
-}
-```
-
-### 5. Multi-ControlNet Generation
-
-**Endpoint**: `multi_controlnet_generation`
-
-Combine depth and edge control for maximum precision.
-
-**Required Parameters**:
-- `image`: Base64 encoded input image
-- `prompt`: Text description of desired output
-
-**Optional Parameters**:
-- `num_inference_steps`: Number of denoising steps (default: 30)
-- `guidance_scale`: Prompt adherence strength (default: 3.5)
-- `depth_conditioning_scale`: Depth control strength (default: 0.6)
-- `canny_conditioning_scale`: Edge control strength (default: 0.6)
-- `low_threshold`: Canny low threshold (default: 100)
-- `high_threshold`: Canny high threshold (default: 200)
-- `seed`: Random seed for reproducibility
-- `width`: Output width (default: 1024)
-- `height`: Output height (default: 1024)
-
-**Example**:
-```python
-payload = {
-    "input": {
-        "endpoint": "multi_controlnet_generation",
-        "image": "base64_encoded_image",
-        "prompt": "a photorealistic portrait",
-        "depth_conditioning_scale": 0.7,
-        "canny_conditioning_scale": 0.5,
-        "seed": 789
-    }
-}
-```
-
-### 6. Model Information
-
-**Endpoint**: `get_model_info`
-
-Get information about loaded models and available endpoints.
-
-**Parameters**: None
-
-**Example**:
-```python
-payload = {
-    "input": {
-        "endpoint": "get_model_info"
-    }
-}
-```
-
-## Quick Reference
-
-### Available Endpoints:
-
-- **`instruction_edit`**: True FLUX.1 Kontext - natural language editing without masks
-- **`fill_image`**: Traditional inpainting with optional masks
-- **`depth_controlled_generation`**: Structure-preserving generation
-- **`canny_controlled_generation`**: Edge-guided generation  
-- **`multi_controlnet_generation`**: Combined depth + edge control
-- **`get_model_info`**: Health check and model information
-
-### Which Endpoint to Use?
-
-- **Want to edit with natural language?** → Use `instruction_edit` ("change the sky to sunset")
-- **Want precise control with masks?** → Use `fill_image` with mask
-- **Want to transform while keeping structure?** → Use `depth_controlled_generation` or `canny_controlled_generation`
-
-## Complete Usage Example
+True FLUX.1 Kontext instruction-based editing without masks:
 
 ```python
 import requests
 import base64
-import json
-from PIL import Image
-import io
 
-class FluxKontextClient:
-    def __init__(self, endpoint_url, api_key):
-        self.endpoint_url = endpoint_url
-        self.api_key = api_key
-        self.headers = {"Authorization": f"Bearer {api_key}"}
-    
-    def image_to_base64(self, image_path):
-        """Convert image file to base64 string"""
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode()
-    
-    def base64_to_image(self, base64_str):
-        """Convert base64 string to PIL Image"""
-        image_data = base64.b64decode(base64_str)
-        return Image.open(io.BytesIO(image_data))
-    
-    def call_endpoint(self, endpoint, **kwargs):
-        """Make API call to RunPod endpoint"""
-        payload = {
-            "input": {
-                "endpoint": endpoint,
-                **kwargs
-            }
-        }
-        
-        response = requests.post(
-            self.endpoint_url,
-            headers=self.headers,
-            json=payload
-        )
-        
-        return response.json()
-    
-    def fill_image(self, image_path, mask_path, prompt, **kwargs):
-        """Fill/inpaint image"""
-        image_b64 = self.image_to_base64(image_path)
-        mask_b64 = self.image_to_base64(mask_path)
-        
-        return self.call_endpoint(
-            "fill_image",
-            image=image_b64,
-            mask=mask_b64,
-            prompt=prompt,
-            **kwargs
-        )
-    
-    def depth_controlled_generation(self, image_path, prompt, **kwargs):
-        """Generate with depth control"""
-        image_b64 = self.image_to_base64(image_path)
-        
-        return self.call_endpoint(
-            "depth_controlled_generation",
-            image=image_b64,
-            prompt=prompt,
-            **kwargs
-        )
-    
-    def canny_controlled_generation(self, image_path, prompt, **kwargs):
-        """Generate with edge control"""
-        image_b64 = self.image_to_base64(image_path)
-        
-        return self.call_endpoint(
-            "canny_controlled_generation",
-            image=image_b64,
-            prompt=prompt,
-            **kwargs
-        )
-    
-    def multi_controlnet_generation(self, image_path, prompt, **kwargs):
-        """Generate with multiple controls"""
-        image_b64 = self.image_to_base64(image_path)
-        
-        return self.call_endpoint(
-            "multi_controlnet_generation",
-            image=image_b64,
-            prompt=prompt,
-            **kwargs
-        )
+# Load your image
+with open("input.jpg", "rb") as f:
+    image_b64 = base64.b64encode(f.read()).decode()
 
-# Usage
-client = FluxKontextClient(
-    endpoint_url="https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/runsync",
-    api_key="YOUR_RUNPOD_API_KEY"
-)
-
-# Fill image example
-result = client.fill_image(
-    image_path="input.jpg",
-    mask_path="mask.jpg", 
-    prompt="a beautiful garden",
-    num_inference_steps=30,
-    seed=42
-)
-
-if result["output"]["status"] == "success":
-    # Save result
-    output_image = client.base64_to_image(result["output"]["image"])
-    output_image.save("output.png")
-    print("Image generated successfully!")
-else:
-    print(f"Error: {result['output']['error']}")
-```
-
-## Response Format
-
-All endpoints return a JSON response with the following structure:
-
-**Success Response**:
-```json
-{
-    "status": "success",
-    "image": "base64_encoded_result_image",
-    "parameters": {
-        "prompt": "...",
+payload = {
+    "input": {
+        "endpoint": "instruction_edit",
+        "image": image_b64,
+        "instruction": "Remove the shower rod and add a shower door",
         "num_inference_steps": 30,
         "guidance_scale": 3.5,
-        "seed": 42,
-        "width": 1024,
-        "height": 1024
+        "seed": 42
+    }
+}
+
+response = requests.post(
+    "https://api.runpod.ai/v2/your-endpoint-id/run",
+    json=payload,
+    headers={"Authorization": "Bearer your-api-key"}
+)
+```
+
+### Fill Image (Traditional Inpainting)
+
+Traditional inpainting with optional masks:
+
+```python
+payload = {
+    "input": {
+        "endpoint": "fill_image",
+        "image": image_b64,
+        "prompt": "A beautiful shower door",
+        "mask": mask_b64,  # Optional - creates full mask if not provided
+        "num_inference_steps": 30,
+        "guidance_scale": 30.0,
+        "strength": 0.8
     }
 }
 ```
 
-**Error Response**:
-```json
-{
-    "status": "error",
-    "error": "Error message",
-    "traceback": "Full error traceback"
-}
-```
+## Model Architecture
 
-## Resource Requirements
+- **FLUX.1-Fill-dev**: Mask-based inpainting
+- **FLUX.1-Kontext-dev**: Instruction-based editing
+- **FLUX.1-Depth-dev**: Depth-controlled generation
+- **FLUX.1-Canny-dev**: Edge-controlled generation
+- **Intel/dpt-hybrid-midas**: Depth estimation
 
-### Recommended GPU Configurations
+## Performance Benefits
 
-- **RTX 4090**: 24GB VRAM - Excellent performance
-- **A100**: 40GB/80GB VRAM - Best performance
-- **RTX 3090**: 24GB VRAM - Good performance
-- **A6000**: 48GB VRAM - Excellent for large batches
+✅ **No API Fees**: All processing runs locally  
+✅ **No Authentication**: No per-request HF tokens needed  
+✅ **Faster**: No external API calls  
+✅ **Private**: Data never leaves your container  
+✅ **Reliable**: No external dependencies  
 
-### Memory Usage
+## Memory Optimization
 
-- **Base Models**: ~12GB VRAM
-- **Working Memory**: ~8GB VRAM
-- **Total Required**: 20GB+ VRAM recommended
+The handler includes several optimizations:
 
-## Deployment Tips
-
-1. **Model Caching**: Uncomment the pre-download section in Dockerfile to bake models into the image for faster cold starts.
-
-2. **Scaling**: Configure auto-scaling based on your usage patterns in RunPod console.
-
-3. **Monitoring**: Use RunPod's built-in monitoring or implement custom logging.
-
-4. **Cost Optimization**: Use spot instances for non-critical workloads.
+- SafeTensors for faster loading
+- Memory efficient attention
+- Automatic garbage collection
+- GPU memory management
 
 ## Troubleshooting
 
-### Common Issues
+### Model Loading Issues
 
-1. **Authentication Error (401)**: 
-   - Set `HUGGINGFACE_TOKEN` environment variable in RunPod
-   - Accept licenses for FLUX.1 models on Hugging Face
-   - Ensure token has "Read" permissions
+If you get model loading errors:
 
-2. **Out of Memory**: Reduce image size or use smaller models
+1. **First Time Setup**: Models need to be downloaded once with HF authentication
+2. **Cache Location**: Ensure cache directories exist in `/workspace/models`
+3. **Memory**: Ensure sufficient GPU memory (24GB+ recommended)
 
-3. **Timeout**: Increase timeout settings for complex generations
+### Performance Issues
 
-4. **Model Loading**: Ensure sufficient disk space for model downloads
+- Use `torch.compile()` for faster inference
+- Enable `use_safetensors=True` for faster loading
+- Reduce `num_inference_steps` for faster generation
 
-5. **Base64 Errors**: Verify image encoding/decoding
+## Development
 
-### Debug Mode
+### Local Testing
 
-Set environment variable `DEBUG=1` for verbose logging:
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
-```python
-import os
-os.environ["DEBUG"] = "1"
+# Run handler locally
+python handler.py
 ```
+
+### Configuration
+
+Edit `runpod_config.py` for:
+- Model paths
+- Default parameters
+- Resource limits
+- Validation rules
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+- **Code**: MIT License
+- **Models**: Black Forest Labs Non-Commercial License
+- **Usage**: Non-commercial use only
 
 ## Contributing
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## Support
 
-- **Documentation**: This README
-- **Issues**: GitHub Issues
-- **RunPod Support**: [RunPod Discord](https://discord.gg/runpod)
-
-## Acknowledgments
-
-- [Black Forest Labs](https://blackforestlabs.ai/) for FLUX.1 models
-- [RunPod](https://runpod.io/) for serverless infrastructure
-- [Hugging Face](https://huggingface.co/) for model hosting and libraries 
+For issues and questions:
+- GitHub Issues: Create an issue in this repository
+- RunPod Discord: Join the RunPod community
+- Documentation: Check RunPod serverless docs 

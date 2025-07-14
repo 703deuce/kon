@@ -14,7 +14,6 @@ from typing import Dict, Any, Optional, List
 import traceback
 import gc
 import os
-from huggingface_hub import login
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -34,61 +33,74 @@ class FluxKontextHandler:
         self._initialize_models()
     
     def _initialize_models(self):
-        """Initialize all required models"""
+        """Initialize all required models using local diffusers (no API authentication needed)"""
         try:
-            logger.info("Initializing FLUX.1 Kontext models...")
+            logger.info("Initializing FLUX.1 Kontext models using local diffusers...")
             
-            # Authenticate with Hugging Face if token is provided
-            hf_token = os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("HF_TOKEN")
-            if hf_token:
-                logger.info("Authenticating with Hugging Face...")
-                login(token=hf_token)
-                logger.info("✅ Hugging Face authentication successful")
-            else:
-                logger.warning("⚠️ No Hugging Face token found. Set HUGGINGFACE_TOKEN environment variable for gated models.")
+            # No authentication needed for local inference
+            logger.info("✅ Using local diffusers approach - no API authentication required")
             
             # Initialize Fill Pipeline for mask-based inpainting
+            logger.info("Loading FLUX.1 Fill pipeline...")
             self.fill_pipeline = FluxFillPipeline.from_pretrained(
                 "black-forest-labs/FLUX.1-Fill-dev",
-                torch_dtype=self.dtype
+                torch_dtype=self.dtype,
+                use_safetensors=True
             ).to(self.device)
             
             # Initialize Kontext Pipeline for instruction-based editing
+            logger.info("Loading FLUX.1 Kontext pipeline...")
             self.kontext_pipeline = FluxPipeline.from_pretrained(
                 "black-forest-labs/FLUX.1-Kontext-dev",
-                torch_dtype=self.dtype
+                torch_dtype=self.dtype,
+                use_safetensors=True
             ).to(self.device)
             
             # Initialize ControlNet models
+            logger.info("Loading ControlNet models...")
             controlnet_depth = FluxControlNetModel.from_pretrained(
                 "black-forest-labs/FLUX.1-Depth-dev",
-                torch_dtype=self.dtype
+                torch_dtype=self.dtype,
+                use_safetensors=True
             )
             
             controlnet_canny = FluxControlNetModel.from_pretrained(
                 "black-forest-labs/FLUX.1-Canny-dev", 
-                torch_dtype=self.dtype
+                torch_dtype=self.dtype,
+                use_safetensors=True
             )
             
             # Initialize ControlNet Pipeline
             self.controlnet_pipeline = FluxControlNetPipeline.from_pretrained(
                 "black-forest-labs/FLUX.1-dev",
                 controlnet=[controlnet_depth, controlnet_canny],
-                torch_dtype=self.dtype
+                torch_dtype=self.dtype,
+                use_safetensors=True
             ).to(self.device)
             
             # Initialize depth estimator
+            logger.info("Loading depth estimator...")
             self.depth_estimator = pipeline(
                 "depth-estimation",
                 model="Intel/dpt-hybrid-midas",
                 device=0 if torch.cuda.is_available() else -1
             )
             
-            logger.info("Models initialized successfully")
+            # Enable memory efficient attention
+            if hasattr(self.fill_pipeline, 'enable_memory_efficient_attention'):
+                self.fill_pipeline.enable_memory_efficient_attention()
+            if hasattr(self.kontext_pipeline, 'enable_memory_efficient_attention'):
+                self.kontext_pipeline.enable_memory_efficient_attention()
+            if hasattr(self.controlnet_pipeline, 'enable_memory_efficient_attention'):
+                self.controlnet_pipeline.enable_memory_efficient_attention()
+            
+            logger.info("✅ All models initialized successfully using local diffusers")
             
         except Exception as e:
-            logger.error(f"Error initializing models: {str(e)}")
-            raise
+            logger.error(f"❌ Error initializing models: {str(e)}")
+            logger.error("💡 Make sure model weights are downloaded locally")
+            logger.error("💡 You may need to download models once with HF authentication, then they'll work locally")
+            raise e
     
     def _image_to_base64(self, image: Image.Image) -> str:
         """Convert PIL Image to base64 string"""
