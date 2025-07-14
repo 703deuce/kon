@@ -21,8 +21,31 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configure network storage for model caching
-RUNPOD_VOLUME_PATH = "/runpod-volume"
-MODEL_CACHE_DIR = os.path.join(RUNPOD_VOLUME_PATH, "models") if os.path.exists(RUNPOD_VOLUME_PATH) else None
+# RunPod network storage mount points (try common locations)
+POSSIBLE_MOUNT_POINTS = [
+    "/runpod-volume",
+    "/workspace/volume", 
+    "/volume",
+    "/mnt/volume",
+    "/storage"
+]
+
+MODEL_CACHE_DIR = None
+
+# Check if manually configured via environment variable
+if os.environ.get("RUNPOD_VOLUME_PATH"):
+    volume_path = os.environ.get("RUNPOD_VOLUME_PATH")
+    if os.path.exists(volume_path):
+        MODEL_CACHE_DIR = os.path.join(volume_path, "models")
+        logger.info(f"📁 Using manually configured volume path: {volume_path}")
+
+# If not manually configured, check common mount points
+if MODEL_CACHE_DIR is None:
+    for mount_point in POSSIBLE_MOUNT_POINTS:
+        if os.path.exists(mount_point):
+            MODEL_CACHE_DIR = os.path.join(mount_point, "models")
+            logger.info(f"📁 Found network storage at: {mount_point}")
+            break
 
 # Set HuggingFace cache directory to use network storage
 if MODEL_CACHE_DIR:
@@ -34,6 +57,26 @@ if MODEL_CACHE_DIR:
     logger.info(f"📁 Using network storage for model cache: {MODEL_CACHE_DIR}")
 else:
     logger.info("⚠️ Network storage not found, using default cache location")
+    logger.info("🔍 Checked mount points: " + ", ".join(POSSIBLE_MOUNT_POINTS))
+    
+    # Debug: List all available mount points
+    try:
+        import subprocess
+        result = subprocess.run(['df', '-h'], capture_output=True, text=True)
+        logger.info("💾 Available storage:")
+        for line in result.stdout.split('\n'):
+            if line.strip():
+                logger.info(f"   {line}")
+    except Exception as e:
+        logger.info(f"⚠️ Could not check storage: {e}")
+    
+    # Debug: List directories in /workspace and /
+    for check_dir in ["/workspace", "/"]:
+        try:
+            dirs = [d for d in os.listdir(check_dir) if os.path.isdir(os.path.join(check_dir, d))]
+            logger.info(f"📁 Contents of {check_dir}: {dirs}")
+        except Exception as e:
+            logger.info(f"⚠️ Could not list {check_dir}: {e}")
 
 class FluxKontextHandler:
     def __init__(self):
