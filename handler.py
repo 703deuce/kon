@@ -20,6 +20,21 @@ from huggingface_hub import login
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Configure network storage for model caching
+RUNPOD_VOLUME_PATH = "/runpod-volume"
+MODEL_CACHE_DIR = os.path.join(RUNPOD_VOLUME_PATH, "models") if os.path.exists(RUNPOD_VOLUME_PATH) else None
+
+# Set HuggingFace cache directory to use network storage
+if MODEL_CACHE_DIR:
+    os.environ["HF_HOME"] = MODEL_CACHE_DIR
+    os.environ["HUGGINGFACE_HUB_CACHE"] = MODEL_CACHE_DIR
+    os.environ["TRANSFORMERS_CACHE"] = MODEL_CACHE_DIR
+    # Create the cache directory if it doesn't exist
+    os.makedirs(MODEL_CACHE_DIR, exist_ok=True)
+    logger.info(f"📁 Using network storage for model cache: {MODEL_CACHE_DIR}")
+else:
+    logger.info("⚠️ Network storage not found, using default cache location")
+
 class FluxKontextHandler:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -58,10 +73,20 @@ class FluxKontextHandler:
                 self.authenticate_hf()
                 
                 logger.info("Loading FluxKontextPipeline...")
+                logger.info(f"🗂️ Model cache location: {MODEL_CACHE_DIR if MODEL_CACHE_DIR else 'default'}")
+                
+                pipeline_kwargs = {
+                    "torch_dtype": self.dtype,
+                    "use_safetensors": True
+                }
+                
+                # Use network storage cache if available
+                if MODEL_CACHE_DIR:
+                    pipeline_kwargs["cache_dir"] = MODEL_CACHE_DIR
+                
                 self.kontext_pipeline = FluxKontextPipeline.from_pretrained(
                     "black-forest-labs/FLUX.1-Kontext-dev",
-                    torch_dtype=self.dtype,
-                    use_safetensors=True
+                    **pipeline_kwargs
                 )
                 self.kontext_pipeline.to(self.device)
                 
@@ -85,10 +110,20 @@ class FluxKontextHandler:
                 self.authenticate_hf()
                 
                 logger.info("Loading FluxFillPipeline...")
+                logger.info(f"🗂️ Model cache location: {MODEL_CACHE_DIR if MODEL_CACHE_DIR else 'default'}")
+                
+                pipeline_kwargs = {
+                    "torch_dtype": self.dtype,
+                    "use_safetensors": True
+                }
+                
+                # Use network storage cache if available
+                if MODEL_CACHE_DIR:
+                    pipeline_kwargs["cache_dir"] = MODEL_CACHE_DIR
+                
                 self.fill_pipeline = FluxFillPipeline.from_pretrained(
                     "black-forest-labs/FLUX.1-Fill-dev",
-                    torch_dtype=self.dtype,
-                    use_safetensors=True
+                    **pipeline_kwargs
                 )
                 self.fill_pipeline.to(self.device)
                 
