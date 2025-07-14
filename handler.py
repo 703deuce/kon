@@ -553,13 +553,18 @@ def runpod_handler(job):
             os.environ["HF_TOKEN"] = job_env["HF_TOKEN"]
             logger.info("HF_TOKEN set from job environment")
         
+        # Get input parameters
+        job_input = job.get("input", {})
+        
+        # Also check for hf_token in job input and set as environment variable
+        if "hf_token" in job_input:
+            os.environ["HF_TOKEN"] = job_input["hf_token"]
+            logger.info("HF_TOKEN set from job input")
+        
         # Initialize handler if not already done
         global handler
         if handler is None:
             handler = initialize_handler()
-        
-        # Get input parameters
-        job_input = job.get("input", {})
         endpoint = job_input.get("endpoint", "")
         
         # Route to appropriate endpoint
