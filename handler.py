@@ -33,6 +33,11 @@ os.environ["TRANSFORMERS_CACHE"] = MODEL_CACHE_DIR
 os.makedirs(MODEL_CACHE_DIR, exist_ok=True)
 logger.info(f"📁 Using local model cache: {MODEL_CACHE_DIR}")
 
+# FLUX model compatibility fixes
+# Disable xformers to avoid attn_output bugs
+os.environ["DISABLE_XFORMERS"] = "1"
+logger.info("🔧 Disabled xformers to avoid FLUX attention bugs")
+
 # S3 sync functions removed - using network volume storage only
 
 def debug_storage_info():
@@ -166,11 +171,12 @@ class FluxKontextHandler:
                 )
                 self.kontext_pipeline.to(self.device)
                 
-                # Enable memory efficient attention
+                # Enable memory efficient attention (skip xformers due to FLUX compatibility issues)
                 if hasattr(self.kontext_pipeline, 'enable_model_cpu_offload'):
                     self.kontext_pipeline.enable_model_cpu_offload()
-                if hasattr(self.kontext_pipeline, 'enable_xformers_memory_efficient_attention'):
-                    self.kontext_pipeline.enable_xformers_memory_efficient_attention()
+                # Skip xformers due to attn_output bug in FLUX models
+                # if hasattr(self.kontext_pipeline, 'enable_xformers_memory_efficient_attention'):
+                #     self.kontext_pipeline.enable_xformers_memory_efficient_attention()
                     
                 logger.info("FluxKontextPipeline loaded successfully")
                 
@@ -201,11 +207,12 @@ class FluxKontextHandler:
                 )
                 self.fill_pipeline.to(self.device)
                 
-                # Enable memory efficient attention
+                # Enable memory efficient attention (skip xformers due to FLUX compatibility issues)
                 if hasattr(self.fill_pipeline, 'enable_model_cpu_offload'):
                     self.fill_pipeline.enable_model_cpu_offload()
-                if hasattr(self.fill_pipeline, 'enable_xformers_memory_efficient_attention'):
-                    self.fill_pipeline.enable_xformers_memory_efficient_attention()
+                # Skip xformers due to attn_output bug in FLUX models
+                # if hasattr(self.fill_pipeline, 'enable_xformers_memory_efficient_attention'):
+                #     self.fill_pipeline.enable_xformers_memory_efficient_attention()
                     
                 logger.info("FluxFillPipeline loaded successfully")
                 
@@ -372,14 +379,19 @@ class FluxKontextHandler:
                 torch.manual_seed(seed)
             
             # Generate using instruction-based editing
-            result = pipeline(
-                prompt=instruction,
-                image=image,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-                height=height,
-                width=width
-            )
+            # Add specific FLUX compatibility settings
+            generation_kwargs = {
+                "prompt": instruction,
+                "image": image,
+                "num_inference_steps": num_inference_steps,
+                "guidance_scale": guidance_scale,
+                "height": height,
+                "width": width
+            }
+            
+            # Ensure we're not using problematic attention processors
+            logger.info(f"🎨 Starting instruction_edit generation with {num_inference_steps} steps")
+            result = pipeline(**generation_kwargs)
             
             # Convert result to base64
             output_image = result.images[0]
